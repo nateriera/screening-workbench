@@ -1,0 +1,576 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:20f7c2e0-a4b4-4437-9f6c-0e53fb346204",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-10-13T09:03:45-07:00",
+    "tools": [
+      {
+        "vendor": "OpenAI",
+        "name": "Hermes Agent",
+        "version": "1"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "screening-workbench-1.0.0",
+      "name": "Screening Workbench",
+      "version": "1.0.0",
+      "purl": "pkg:generic/screening-workbench@1.0.0?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/nateriera/screening-workbench"
+        }
+      ],
+      "properties": [
+        {
+          "name": "build.commit",
+          "value": "f93a88b12dbd32272c7e9dc5bf8544478df9f160"
+        },
+        {
+          "name": "release.archive",
+          "value": "Screening-Workbench-1.0.0-windows-x64.zip"
+        },
+        {
+          "name": "release.archive.sha256",
+          "value": "349414995b6cb00c81ffbcbf0e83c0d721726a03aff7647c22a82acc8933e36c"
+        },
+        {
+          "name": "scope.note",
+          "value": "Draft/runtime SBOM from frozen distribution plus official CPython SBOM and provenance checks. The 2026-10-13 release ZIP was rebuilt with 14 notice files. It records unresolved native version/provenance differences: OpenSSL DLLs 3.5.8 vs official CPython SBOM 3.5.7; sqlite3.dll 3.53.1.0 vs 3.50.4.0; zlib1.dll resource 1.3.2 vs zlib-ng 2.2.4. Do not treat this SBOM as legal clearance. Build-only PyInstaller, hooks, and their transitive dependencies are omitted because they were not found bundled in the release tree. Windows-provided dependencies may remain external."
+        },
+        {
+          "name": "release.archive.size.bytes",
+          "value": "15895056"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "framework",
+      "bom-ref": "cpython-3.14.7",
+      "name": "CPython",
+      "version": "3.14.7",
+      "purl": "pkg:generic/cpython@3.14.7?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "id": "PSF-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://www.python.org/ftp/python/3.14.7/python-3.14.7-amd64.zip"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ac1a727a71738e11de80b76e975f9b8a258aea6412bfc31696b929d59c6aafd0"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "The official Windows manifest identifies CPython 3.14.7 x64; runtime DLL version resources also report 3.14.7. Python 3.14.7 is hashed against the official release manifest."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "source.distribution.sha256",
+          "value": "ac1a727a71738e11de80b76e975f9b8a258aea6412bfc31696b929d59c6aafd0"
+        },
+        {
+          "name": "license.notice",
+          "value": "The standard CPython LICENSE.txt (including PSF License 2.0 and historical license material) is in the source distribution but was not present in the frozen dist tree; include and verify the appropriate license notices in the packaged deliverables."
+        },
+        {
+          "name": "bundled.runtime.surface",
+          "value": "CPython interpreter DLL, stdlib Python modules and extension modules; no third-party application runtime package/import identified."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "tcl-9.0.4",
+      "name": "Tcl",
+      "version": "9.0.4",
+      "purl": "pkg:generic/tcl@9.0.4?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "Tcl/Tk license terms (permissive, BSD-like)"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a1fb45f963b05cb083a97df1449c2023b484eb921d40a463da7501b0f60e0f70"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Version resource in bundled tcl90.dll says 9.0.4; bundled DLL SHA-256 matches the official CPython 3.14.7 Tcl/Tk MSI payload. Runtime scripts are the official libtcl9.0.4.zip contents."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/tcl90.dll; _internal/_tcl_data/*"
+        },
+        {
+          "name": "license.notice",
+          "value": "_internal/_tcl_data/license.terms"
+        },
+        {
+          "name": "source.archive.sha256",
+          "value": "8201f2d61a95fd725d6eac46a57813389f5096967a00969663160020d848104a"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "tk-9.0.4",
+      "name": "Tk",
+      "version": "9.0.4",
+      "purl": "pkg:generic/tk@9.0.4?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "Tcl/Tk license terms (permissive, BSD-like)"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "31f625c52e65d29d126e710ed8bab2ec964cb770e4fc59bc329dfff02cb6ddcf"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Version resource in bundled tcl9tk90.dll says 9.0.4; bundled DLL SHA-256 matches the official CPython 3.14.7 Tcl/Tk MSI payload. Runtime scripts are the official libtk9.0.4.zip contents."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/tcl9tk90.dll; _internal/_tkinter.pyd; _internal/_tk_data/*"
+        },
+        {
+          "name": "license.notice",
+          "value": "_internal/_tk_data/license.terms"
+        },
+        {
+          "name": "source.archive.sha256",
+          "value": "d99bc63cfa4f6c93f98808ec54f17be706b67e315968c1c9d82cf974828a8b70"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libtommath-1.3.0",
+      "name": "LibTomMath",
+      "version": "1.3.0",
+      "purl": "pkg:generic/libtommath@1.3.0?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2d760fefb452665b6af8c8d9d29f3a8378f10fc0847cdd9938ea0cb5edf1d573"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Tcl source's CMakeLists identifies LibTomMath 1.3.0; bundled headers declare SPDX-License-Identifier: Unlicense; bundled DLL hash matches Python's Tcl/Tk MSI."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/libtommath.dll (Tcl dependency)"
+        },
+        {
+          "name": "license.notice",
+          "value": "The Unlicense text is in the CPython Tcl source archive at cpython-source-deps-tcl-9.0.4.0/libtommath/LICENSE; it is not in the frozen tree."
+        },
+        {
+          "name": "source.archive.sha256",
+          "value": "3ac2acd65ddaaac0b2b8df321b558419d21da20bf67ab39149b8248c85f0d214"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "sqlite-3.50.4",
+      "name": "SQLite",
+      "version": "3.50.4",
+      "purl": "pkg:generic/sqlite@3.50.4?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "Public domain (SQLite blessing)"
+          }
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Official CPython 3.14.7 distribution SPDX SBOM names SQLite 3.50.4.0 and its source archive is hash-listed there; bundled sqlite3.dll PE version resource says 3.53.1.0. Exact shipped SQLite binary differs from official CPython baseline and origin was not reconciled."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/sqlite3.dll; _internal/_sqlite3.pyd"
+        },
+        {
+          "name": "official.distribution.version",
+          "value": "3.50.4.0 (SBOM); artifact resource reports 3.53.1.0; provenance mismatch unresolved."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "openssl-3.5.8",
+      "name": "OpenSSL",
+      "version": "3.5.8",
+      "purl": "pkg:generic/openssl@3.5.8?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6dadf2c701b8c991935222133ae0c789e2afeb444132aee79156591101c46d86"
+        },
+        {
+          "alg": "SHA-256",
+          "content": "27cbeebacf0889dc91c69e17105415606a3c12f2bb9c1d9053b434b36d3bcdab"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Both bundled OpenSSL DLLs' PE version resources report 3.5.8. CPython 3.14.7's official SBOM and hash-verified source archive identify 3.5.7, so the exact source of the 3.5.8 binaries is unverified."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/libcrypto-3-x64.dll; _internal/libssl-3-x64.dll"
+        },
+        {
+          "name": "official.distribution.version",
+          "value": "3.5.7 (official SBOM); artifact PE resources report 3.5.8; source mismatch unresolved."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "zlib-ng-2.2.4",
+      "name": "zlib-ng",
+      "version": "2.2.4",
+      "purl": "pkg:generic/zlib-ng@2.2.4?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "zlib license (permissive)"
+          }
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "medium",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "medium",
+              "value": "Official Python SBOM lists zlib-ng 2.2.4; bundled zlib1.dll file version is 1.3.2 but package provenance/version mapping was not verified."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/zlib1.dll; _internal/python314.dll"
+        },
+        {
+          "name": "official.distribution.version",
+          "value": "2.2.4 zlib-ng (SBOM); zlib1.dll resource reports 1.3.2; mapping not reconciled."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "expat-2.8.2",
+      "name": "Expat",
+      "version": "2.8.2",
+      "purl": "pkg:generic/expat@2.8.2?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "high",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "high",
+              "value": "Bundled pyexpat.pyd embeds expat_2.8.2; matches official CPython SBOM."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/pyexpat.pyd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libffi-3.4.4",
+      "name": "libffi",
+      "version": "3.4.4",
+      "purl": "pkg:generic/libffi@3.4.4?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT (upstream; exact bundled DLL source hash was not matched)"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "73283163794d6c13684c91460247b7d03598a2e0550085daf125b12321aa37bd"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "medium",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "medium",
+              "value": "Official CPython SBOM names libffi 3.4.4; artifact contains libffi-8.dll, no reliable version resource; source provenance not hash-matched."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/libffi-8.dll; _internal/_ctypes.pyd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "bzip2-1.0.8",
+      "name": "bzip2",
+      "version": "1.0.8",
+      "purl": "pkg:generic/bzip2@1.0.8?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "bzip2 license (permissive)"
+          }
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "medium",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "medium",
+              "value": "Official CPython SBOM identifies bzip2 1.0.8; bundled _bz2.pyd is present, but native binary source/hash mapping was not reconciled."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/_bz2.pyd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "xz-5.2.5",
+      "name": "XZ Utils liblzma",
+      "version": "5.2.5",
+      "purl": "pkg:generic/xz@5.2.5?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "liblzma public domain (per upstream COPYING); LGPL/GPL license texts describe other XZ files/tools, not confirmed present in bundled code."
+          }
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "medium",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "medium",
+              "value": "Official CPython SBOM lists XZ 5.2.5 and the _lzma extension is bundled; extension's exact binary provenance/hash not matched to source package."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/_lzma.pyd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "zstd-1.5.7",
+      "name": "Zstandard",
+      "version": "1.5.7",
+      "purl": "pkg:generic/zstd@1.5.7?platform=windows-x64",
+      "licenses": [
+        {
+          "license": {
+            "name": "BSD-3-Clause (Zstandard library license; official source/COPYING not yet inspected)"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3423570703f480f579f3f0693c17ace5505ec0f179ff43e4f96304b2cbecc984"
+        }
+      ],
+      "evidence": {
+        "identity": {
+          "field": "version",
+          "confidence": "medium",
+          "methods": [
+            {
+              "technique": "manifest-analysis",
+              "confidence": "medium",
+              "value": "Official SBOM identifies Zstandard 1.5.7; _zstd.pyd contains version 1.5.7, but its exact source binary provenance is not yet hash-matched."
+            }
+          ]
+        }
+      },
+      "properties": [
+        {
+          "name": "runtime.files",
+          "value": "_internal/_zstd.pyd"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "screening-workbench-1.0.0",
+      "dependsOn": [
+        "cpython-3.14.7"
+      ]
+    },
+    {
+      "ref": "cpython-3.14.7",
+      "dependsOn": [
+        "tcl-9.0.4",
+        "tk-9.0.4",
+        "libtommath-1.3.0",
+        "sqlite-3.50.4",
+        "openssl-3.5.8",
+        "zlib-ng-2.2.4",
+        "expat-2.8.2",
+        "libffi-3.4.4",
+        "bzip2-1.0.8",
+        "xz-5.2.5",
+        "zstd-1.5.7"
+      ]
+    }
+  ]
+}
