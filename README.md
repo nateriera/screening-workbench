@@ -12,11 +12,11 @@ The individual researcher, grad student, or small lab. Screening Workbench runs 
 
 **Screening queue** — keyboard-first include/maybe/exclude (`I` / `M` / `E`), search and year/journal/batch filters, a live recent-decisions panel:
 
-![Screening queue](docs/ui-references/live-captures/phase3-screening.png)
+![Screening queue](docs/ui-references/live-captures/screening-workbench-screening.png)
 
 **PRISMA 2020 flow diagram** — generated from one immutable watermarked snapshot, rendered live in-app and in the exported SVG from the same shared data:
 
-![PRISMA flow diagram](docs/ui-references/live-captures/phase3-prisma.png)
+![PRISMA flow diagram](docs/ui-references/live-captures/screening-workbench-prisma.png)
 
 More screens (Duplicates, Conflicts, Full-text, Studies, Maybe re-review) are captured throughout `docs/ui-references/`.
 
