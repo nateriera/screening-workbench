@@ -1,0 +1,37 @@
+node_modules/
+dist/
+build/
+*.spec
+coverage/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.pdf
+*.ris
+*.xml
+*.jsonl
+*.log
+/dogfood/
+/test-data/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+*.db
+*.db-journal
+*.db-wal
+.pytest_cache/
+
+# Private agent-orchestration prompts (canonical copies live outside this
+# repo; these working-copy files are intentionally not public).
+docs/process/orchestrator-prompt.md
+docs/process/agent-prompt-teardown.md
+docs/process/agent-prompt-implementer.md
+docs/process/agent-prompt-license-audit.md
