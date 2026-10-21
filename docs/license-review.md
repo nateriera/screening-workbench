@@ -18,7 +18,7 @@ This is an engineering review of the compiled Windows x64 onedir artifact, not l
 
 - Source commit: `f93a88b12dbd32272c7e9dc5bf8544478df9f160`.
 - Build: CPython 3.14.7 x64, PyInstaller 6.21.0, Windows 11 x64, PyInstaller onedir/windowed.
-- ZIP: `Screening-Workbench-1.0.0-windows-x64.zip`, 15,870,858 bytes, SHA-256 `5865219df1ba9efcefdb9e5e8868e5cf46aedecfec2fa498c4842066e45502e2`; 999 ZIP entries and `ZipFile.testzip()` returned no corrupt member.
+- ZIP: `Screening-Workbench-1.0.0-windows-x64.zip`, 15,895,056 bytes, SHA-256 `349414995b6cb00c81ffbcbf0e83c0d721726a03aff7647c22a82acc8933e36c` (the 2026-10-13 rebuild with the 14 `docs/notices/` files included; this identity is recorded in `docs/sbom.cdx.json`). **Correction, 2026-10-21:** this line previously cited the superseded first build (15,870,858 bytes, SHA-256 `5865219df1ba9efcefdb9e5e8868e5cf46aedecfec2fa498c4842066e45502e2`; 999 ZIP entries, `ZipFile.testzip()` clean). Those figures are retained here as history only; the rebuild figures are the release identity. See `docs/release-gate-1.0.0.md`.
 - Tree: `ScreeningWorkbench.exe` plus `_internal/` with 68 native PE files (52 DLLs, 16 Python extension modules), Tcl and Tk script trees (839 Tcl files, 90 Tk files), and no site-packages/dist-info/vendor package files. Only Tcl/Tk license files were found in the frozen output.
 - The official CPython 3.14.7 Windows x64 archive checksum is `ac1a727a71738e11de80b76e975f9b8a258aea6412bfc31696b929d59c6aafd0`, matching the official Windows release manifest and its official SPDX SBOM. The SBOM has 34 packages and records most bundled component license fields as `NOASSERTION`; that value is not itself a license conclusion.
 
