@@ -211,6 +211,15 @@ end tell'''
     click button "Open selected" of win
     return "OPEN_SELECTED_CLICKED"
 end tell'''
+            temp_root = Path(tempfile.gettempdir())
+            attachment_dirs_before = {
+                str(path.resolve())
+                for path in temp_root.glob("screening-workbench-attachment-*")
+                if path.is_dir()
+            }
+            preview_before = subprocess.run(
+                ["pgrep", "-x", "Preview"], capture_output=True, text=True, check=False,
+            )
             try:
                 ui_result = subprocess.run(
                     ["osascript", "-e", ui_script],
@@ -230,17 +239,119 @@ end tell'''
                 action_clicked = False
             if action_clicked:
                 time.sleep(2)
+                extracted_pdfs = []
+                for candidate_dir in temp_root.glob("screening-workbench-attachment-*"):
+                    if not candidate_dir.is_dir() or str(candidate_dir.resolve()) in attachment_dirs_before:
+                        continue
+                    candidate_pdf = candidate_dir / "synthetic-attachment.pdf"
+                    try:
+                        if candidate_pdf.is_file() and candidate_pdf.read_bytes() == minimal_pdf():
+                            extracted_pdfs.append(str(candidate_pdf.resolve()))
+                    except OSError:
+                        continue
+                item["attachment_extraction_check"] = {
+                    "new_matching_pdf_paths": extracted_pdfs,
+                    "exact_synthetic_pdf_bytes_found": bool(extracted_pdfs),
+                    "evidence_scope": "new temp directory created during packaged UI attempt contains byte-identical synthetic PDF",
+                }
                 capture_screenshot(output / "packaged-open-selected.png", item)
-                preview = subprocess.run(
-                    ["pgrep", "-fl", "Preview"], capture_output=True, text=True, check=False,
+                preview_after = subprocess.run(
+                    ["pgrep", "-x", "Preview"], capture_output=True, text=True, check=False,
                 )
                 item["pdf_viewer_process_check"] = {
-                    "returncode": preview.returncode,
-                    "stdout": preview.stdout.strip(),
-                    "stderr": preview.stderr.strip(),
+                    "before_returncode": preview_before.returncode,
+                    "before_pids": preview_before.stdout.strip(),
+                    "after_returncode": preview_after.returncode,
+                    "after_pids": preview_after.stdout.strip(),
+                    "after_stderr": preview_after.stderr.strip(),
+                    "viewer_process_exists_after_attempt": preview_after.returncode == 0,
                 }
-                item["status"] = "passed"
-                item["manual_pending"] = ["Human visual acceptance of the packaged app and rendered PDF remains pending."]
+                preview_window_script = '''tell application "System Events"
+    set p to first process whose name is "Preview"
+    return name of every window of p as text
+end tell'''
+                try:
+                    preview_windows = subprocess.run(
+                        ["osascript", "-e", preview_window_script],
+                        capture_output=True, text=True, check=False, timeout=5,
+                    )
+                    item["preview_window_check"] = {
+                        "returncode": preview_windows.returncode,
+                        "stdout": preview_windows.stdout.strip(),
+                        "stderr": preview_windows.stderr.strip(),
+                        "synthetic_filename_visible": "synthetic-attachment.pdf" in preview_windows.stdout,
+                    }
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    item["preview_window_check"] = {
+                        "status": "unavailable", "reason": f"{type(exc).__name__}: {exc}",
+                        "script": preview_window_script,
+                    }
+                preview_document_script = '''tell application "System Events"
+    set p to first process whose name is "Preview"
+    set docs to ""
+    repeat with w in windows of p
+        try
+            set docs to docs & (value of attribute "AXDocument" of w as text) & linefeed
+        end try
+    end repeat
+    return docs
+end tell'''
+                try:
+                    preview_documents = subprocess.run(
+                        ["osascript", "-e", preview_document_script],
+                        capture_output=True, text=True, check=False, timeout=5,
+                    )
+                    exact_doc_visible = any(
+                        Path(pdf_path).parent.name in preview_documents.stdout
+                        and Path(pdf_path).name in preview_documents.stdout
+                        for pdf_path in extracted_pdfs
+                    )
+                    item["preview_document_path_check"] = {
+                        "returncode": preview_documents.returncode,
+                        "stdout": preview_documents.stdout.strip(),
+                        "stderr": preview_documents.stderr.strip(),
+                        "synthetic_temp_document_visible": exact_doc_visible,
+                        "evidence_scope": "Preview AXDocument contains the unique new temp-folder name and synthetic filename",
+                    }
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    exact_doc_visible = False
+                    item["preview_document_path_check"] = {
+                        "status": "unavailable", "reason": f"{type(exc).__name__}: {exc}",
+                        "script": preview_document_script,
+                    }
+                app_windows_script = f'''tell application "System Events"
+    set p to first process whose unix id is {proc.pid}
+    return name of every window of p as text
+end tell'''
+                try:
+                    app_windows = subprocess.run(
+                        ["osascript", "-e", app_windows_script],
+                        capture_output=True, text=True, check=False, timeout=5,
+                    )
+                    item["app_window_check"] = {
+                        "returncode": app_windows.returncode,
+                        "stdout": app_windows.stdout.strip(),
+                        "stderr": app_windows.stderr.strip(),
+                        "open_failed_window_seen": "Open failed" in app_windows.stdout,
+                    }
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    item["app_window_check"] = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
+                passed_evidence = (
+                    bool(extracted_pdfs)
+                    and preview_after.returncode == 0
+                    and exact_doc_visible
+                    and not item.get("app_window_check", {}).get("open_failed_window_seen", False)
+                )
+                item["verification_scope"] = (
+                    "app click, byte-identical PDF extraction to a new temp path, Preview process, and matching AXDocument path; not proof of rendered page or human visual acceptance"
+                )
+                if passed_evidence:
+                    item["status"] = "passed"
+                    item["manual_pending"] = ["Human visual acceptance of the packaged app and rendered PDF remains pending."]
+                else:
+                    item["status"] = "failed"
+                    item["reason"] = "packaged UI click was not corroborated by a new exact temp PDF, a running Preview process, and a matching Preview AXDocument path"
+                    item["manual_pending"] = ["Open the synthetic attachment in the packaged app and confirm the PDF opens and renders in its viewer."]
             else:
                 item["status"] = "failed"
                 item["reason"] = "AppleScript could not verify that Full-text > Open selected was invoked"
