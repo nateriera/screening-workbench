@@ -3012,9 +3012,9 @@ def test_maybe_tab_uses_three_column_queue_detail_and_decision_layout(tmp_path):
     assert app.maybe_columns.grid_columnconfigure(0).get("uniform") == "maybe-cards"
     assert app.maybe_columns.grid_columnconfigure(1).get("uniform") == "maybe-cards"
     assert app.maybe_columns.grid_columnconfigure(2).get("uniform") == "maybe-cards"
-    assert app.maybe_queue_card.cget("padding") == (12,)
-    assert app.maybe_detail_card.cget("padding") == (12,)
-    assert app.maybe_support_card.cget("padding") == (12,)
+    # Tcl/Tk may return pixel objects rather than Python ints.
+    for card in (app.maybe_queue_card, app.maybe_detail_card, app.maybe_support_card):
+        assert tuple(root.winfo_pixels(str(value)) for value in root.tk.splitlist(card.cget("padding"))) == (12,)
     assert app.maybe_queue_card.grid_info()["padx"] == (0, 6)
     assert app.maybe_detail_card.grid_info()["padx"] == 6
     assert app.maybe_support_card.grid_info()["padx"] == (6, 0)
@@ -3853,7 +3853,8 @@ def test_prisma_tab_outer_frame_is_scrollable(tmp_path):
     # <Up>/<Down> bindings call into, so it still proves the canvas
     # genuinely scrolls, not just that a scrollregion string exists.)
     app.prisma_scroll_canvas.yview_moveto(0.5)
-    app.root.update()
+    # Only settle geometry; a full Aqua event loop can hang this hidden root.
+    app.root.update_idletasks()
     assert app.prisma_scroll_canvas.yview()[0] == pytest.approx(0.5, abs=0.01)
     root.destroy()
 
