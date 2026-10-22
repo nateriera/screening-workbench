@@ -8,6 +8,8 @@ on:
       - .github/workflows/macos-diagnostics.yml
       - scripts/macos_diagnostics.py
       - scripts/macos_gui_diagnostic_plugin.py
+      - scripts/macos_layout_diagnostics.py
+      - scripts/macos_layout_diagnostic_plugin.py
 
 permissions:
   contents: read
@@ -60,11 +62,11 @@ jobs:
           "$VENV_PYTHON" -m pip install --disable-pip-version-check pytest==9.1.1
           "$VENV_PYTHON" -m pytest --version | tee "$EVIDENCE_DIR/pytest-version.txt"
 
-      - name: Run isolated, ordered, and cleanup-control cases
+      - name: Measure failing layouts with diagnostic-only viewport controls
         shell: bash
         run: |
           set -euo pipefail
-          "$VENV_PYTHON" scripts/macos_diagnostics.py --output "$EVIDENCE_DIR" --timeout 45
+          "$VENV_PYTHON" scripts/macos_layout_diagnostics.py --output "$EVIDENCE_DIR"
 
       - name: Upload diagnostic logs, stacks, screenshots, and summaries
         if: always()
