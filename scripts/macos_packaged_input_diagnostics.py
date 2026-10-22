@@ -67,9 +67,9 @@ if args.count == 3 && args[1] == "--windows", let pid = pid_t(args[2]) {
     let matches: [[String: Any]] = windows.compactMap { window in
         guard let owner = window[kCGWindowOwnerPID as String] as? Int, owner == Int(pid),
               let layer = window[kCGWindowLayer as String] as? Int, layer == 0,
-              let bounds = window[kCGWindowBounds as String] as? CFDictionary else { return nil }
+              let bounds = window[kCGWindowBounds as String] as? [String: Any] else { return nil }
         var rect = CGRect.zero
-        guard CGRectMakeWithDictionaryRepresentation(bounds, &rect), rect.width > 100, rect.height > 100 else { return nil }
+        guard CGRectMakeWithDictionaryRepresentation(bounds as CFDictionary, &rect), rect.width > 100, rect.height > 100 else { return nil }
         return ["owner_pid": owner, "layer": layer,
                 "bounds": ["x": Double(rect.origin.x), "y": Double(rect.origin.y),
                            "width": Double(rect.width), "height": Double(rect.height)],
