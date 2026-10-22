@@ -86,7 +86,7 @@ jobs:
           "$VENV_PYTHON" scripts/macos_packaged_input_diagnostics.py \
             --app "$RUNNER_TEMP/package-extracted/ScreeningWorkbench.app" \
             --evidence-root "$RUNNER_TEMP/package-evidence" \
-            --output "$EVIDENCE_DIR/packaged-input" --timeout 120
+            --output "$EVIDENCE_DIR/packaged-input" --timeout 180
 
       - name: Upload diagnostic logs, stacks, screenshots, and summaries
         if: always()
