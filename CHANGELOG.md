@@ -6,7 +6,11 @@ release.
 
 ## [Unreleased]
 
-Nothing yet.
+### In progress
+- Preparing a macOS ARM64 packaging candidate under the expected version label
+  1.1.0. The candidate workflow is integrated on `platform/macos-package`;
+  workflow artifacts and validation evidence remain run-specific. This is not a
+  published release.
 
 ## [1.0.0] — 2026-10-21
 

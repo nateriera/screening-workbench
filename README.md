@@ -30,6 +30,10 @@ Windows 11 x64.
 
 The build is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC" on first launch. Choose **More info → Run anyway**, and verify your download against the SHA-256 above. Code signing is planned for a future release; the release's full verification record is `docs/release-gate-1.0.0.md`.
 
+### macOS ARM64 candidate
+
+A macOS ARM64 candidate is built by the [`macOS ARM64 candidate package` workflow](.github/workflows/macos-package.yml) on pushes to `platform/macos-package`. Download the `Screening-Workbench-1.1.0-macos-arm64-candidate` artifact from a completed workflow run and inspect its validation evidence and run result before use; a failed run can retain an artifact for diagnosis. Version 1.1.0 is the candidate label, not a published release. See [`docs/packaging.md`](docs/packaging.md) for install, build, and Gatekeeper instructions.
+
 **Run from source** (Windows 11 x64):
 
 ```powershell
@@ -40,6 +44,14 @@ cd screening-workbench
 # dependencies to install.
 $env:PYTHONPATH = "src"
 python -m screening_workbench.app
+```
+
+**Run from source** (macOS, Apple silicon): use Python 3.12+ with Tkinter. The workflow uses the official Python.org 3.12.10 installer, which includes Tk. Homebrew installs Tkinter separately; install the matching formula for your Python minor version (for example, `brew install python@3.12 python-tk@3.12`), then verify that `python3.12 -c 'import tkinter'` succeeds.
+
+```sh
+git clone https://github.com/nateriera/screening-workbench.git
+cd screening-workbench
+PYTHONPATH=src python3.12 -m screening_workbench.app
 ```
 
 The default project is `%USERPROFILE%\screening-workbench-project.sqlite`. PDF attachments are stored beside the database under `attachments\<sha256>.pdf`; copy that folder with the database when moving a project. Reviewer packet and vote files are separate exports and do not move the original database.

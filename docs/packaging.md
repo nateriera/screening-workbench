@@ -132,3 +132,75 @@ Confirm the ZIP contains every `notices/` file above and run:
 
 Update the release-archive properties in `docs/sbom.cdx.json` only after recording the verified ZIP hash and byte size. Keep the SBOM outside the archive it describes to avoid a self-referential hash.
 
+## macOS ARM64 candidate: version 1.1.0 (unreleased)
+
+The workflow `.github/workflows/macos-package.yml` runs on pushes to `platform/macos-package`, using an Apple silicon `macos-15` runner and Python.org CPython 3.12.10. It builds the version 1.1.0 candidate label; project metadata remains at its existing version and is not changed by packaging. In GitHub Actions, open a completed **macOS ARM64 candidate package** run and download the `Screening-Workbench-1.1.0-macos-arm64-candidate` artifact. The artifact contains the ZIP and `artifacts/evidence/`. The run uploads a successfully created and validated package even when the full test suite or smoke gate fails, so inspect the final run result and evidence before using it. A failed run's artifact is retained for diagnosis, not acceptance. Actions artifacts are retained for 30 days.
+
+On an Apple silicon Mac, unzip the downloaded candidate. Open the extracted `ScreeningWorkbench.app` in place, or optionally drag it to `/Applications`. The application can run from either location. The package is not signed with an Apple Developer ID and is not notarized. PyInstaller may apply an ad hoc signature when building for ARM64; that is not Developer ID signing and does not satisfy Apple's notarization requirements. macOS may therefore block the first launch.
+
+If Gatekeeper blocks the app and you have verified that the candidate came from a successful Actions run, try opening it once. Then open **System Settings → Privacy & Security**, scroll to Security, and choose **Open Anyway** for the blocked app. Confirm the prompt. Apple notes that this option appears for a limited time after the launch attempt. Do not override the warning for an artifact whose source you cannot verify.
+
+As a fallback, remove the quarantine attribute recursively from the app bundle in Terminal, replacing the path if the app is elsewhere:
+
+```sh
+xattr -dr com.apple.quarantine "/path/to/ScreeningWorkbench.app"
+```
+
+Replace the example path with the actual location and name of the extracted `.app` bundle.
+
+Removing quarantine bypasses that Gatekeeper check; use it only for a candidate whose source you trust. Apple recommends Developer ID signing and notarization for software distributed outside the Mac App Store. That is a separate Apple Developer ID decision; the project's existing SignPath process applies to Windows artifacts.
+
+Apple references: [Safely open apps on your Mac](https://support.apple.com/en-us/102445), [Signing your apps for Gatekeeper](https://developer.apple.com/developer-id/), and [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution). SignPath's documented Windows crypto-provider process is described in its [Windows KSP documentation](https://docs.signpath.io/crypto-providers/windows).
+
+### Reproduce the candidate build
+
+Run these steps from the repository root on an Apple silicon Mac. Use Python.org CPython 3.12.10 with Tkinter, as in CI. If using Homebrew Python instead, install the matching `python-tk` formula and confirm Tkinter imports before continuing.
+
+```sh
+set -euo pipefail
+python3.12 --version
+python3.12 -c 'import platform, tkinter; root=tkinter.Tk(); root.withdraw(); print(platform.machine(), root.tk.call("info", "patchlevel")); root.destroy(); assert platform.machine() == "arm64"'
+python3.12 -m venv .venv-macos
+VENV_PYTHON="$PWD/.venv-macos/bin/python"
+"$VENV_PYTHON" -m pip install --disable-pip-version-check pytest pyinstaller==6.21.0
+BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/screening-workbench-macos.XXXXXX")"
+EVIDENCE_DIR="$BUILD_ROOT/evidence"
+APP="$BUILD_ROOT/dist/ScreeningWorkbench.app"
+PACKAGE_ZIP="$PWD/artifacts/Screening-Workbench-1.1.0-macos-arm64.zip"
+mkdir -p "$EVIDENCE_DIR" "$BUILD_ROOT/spec" "$BUILD_ROOT/work" "$BUILD_ROOT/dist" artifacts
+```
+
+Run the complete test suite without deselecting GUI tests. A test failure must remain visible and means the candidate has not passed, even if the workflow continues to collect packaging evidence:
+
+```sh
+"$VENV_PYTHON" -m pytest tests/ -q
+```
+
+Build the onedir `.app` bundle, check that its executable contains an ARM64 slice, run the source and packaged-app smoke check, then capture build/license evidence and create the validated ZIP:
+
+```sh
+"$VENV_PYTHON" -m PyInstaller \
+  --clean --noconfirm --onedir --windowed \
+  --name ScreeningWorkbench \
+  --paths src \
+  --specpath "$BUILD_ROOT/spec" \
+  --workpath "$BUILD_ROOT/work" \
+  --distpath "$BUILD_ROOT/dist" \
+  src/screening_workbench/app.py
+EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")"
+ARCHS="$(lipo -archs "$APP/Contents/MacOS/$EXECUTABLE")"
+printf '%s\n' "$ARCHS"
+[[ " $ARCHS " == *" arm64 "* ]]
+PYTHONPATH=src "$VENV_PYTHON" scripts/macos_smoke.py \
+  --output "$EVIDENCE_DIR/smoke" --packaged-app "$APP"
+"$VENV_PYTHON" scripts/macos_package.py capture \
+  --output "$EVIDENCE_DIR" --app "$APP"
+"$VENV_PYTHON" scripts/macos_package.py package \
+  --app "$APP" --repo-root "$PWD" --output "$PACKAGE_ZIP" \
+  --candidate-label 1.1.0 --evidence-dir "$EVIDENCE_DIR"
+```
+
+The workflow records the complete `pytest` exit status and runs final gates after upload. The source smoke exercises callbacks using synthetic records and a live Tk root; the packaged-app smoke checks launch/process evidence. Neither is human visual acceptance. Review `artifacts/evidence/test-results.json`, `artifacts/evidence/smoke/evidence.json`, and `artifacts/evidence/zip-validation.json` alongside the Actions run summary. Any test, smoke, package, architecture, or final-gate failure remains a failure. Manual GUI review and owner acceptance remain separate pending steps.
+
+Homebrew reference: [`python@3.12`](https://formulae.brew.sh/formula/python@3.12) documents that Tkinter is installed separately with [`python-tk@3.12`](https://formulae.brew.sh/formula/python-tk@3.12).
+

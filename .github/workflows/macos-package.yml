@@ -1,0 +1,166 @@
+name: macOS ARM64 candidate package
+
+on:
+  push:
+    branches:
+      - platform/macos-package
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build macOS ARM64 candidate
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PYTHON_VERSION: "3.12.10"
+      CANDIDATE_LABEL: "1.1.0"
+      VENV_PYTHON: ${{ github.workspace }}/.venv-macos/bin/python
+      EVIDENCE_DIR: ${{ github.workspace }}/artifacts/evidence
+      BUILD_ROOT: ${{ runner.temp }}/screening-workbench-macos
+      PACKAGE_ZIP: ${{ github.workspace }}/artifacts/Screening-Workbench-1.1.0-macos-arm64.zip
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Confirm Apple silicon runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          arch="$(uname -m)"
+          printf 'runner_architecture=%s\n' "$arch" | tee "$EVIDENCE_DIR/runner-architecture.txt"
+          [[ "$arch" == "arm64" ]] || { echo "Expected Apple silicon runner; found $arch" >&2; exit 1; }
+          printf 'source_commit=%s\nbase_commit=15582f25675d12ac62e76995bc8ed9167b966b1f\n' "$(git rev-parse HEAD)" > "$EVIDENCE_DIR/source-identity.txt"
+
+      - name: Install official Python.org Python with Tk
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          installer_pkg="$RUNNER_TEMP/python-${PYTHON_VERSION}-macos11.pkg"
+          curl --fail --location --silent --show-error \
+            "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg" \
+            --output "$installer_pkg"
+          pkgutil --check-signature "$installer_pkg" | tee "$EVIDENCE_DIR/python-installer-signature.txt"
+          shasum -a 256 "$installer_pkg" > "$EVIDENCE_DIR/python-installer-sha256.txt"
+          sudo installer -pkg "$installer_pkg" -target /
+          rm "$installer_pkg"
+          /usr/local/bin/python3.12 --version
+          /usr/local/bin/python3.12 -c 'import platform, tkinter; root=tkinter.Tk(); root.withdraw(); print("python_architecture=" + platform.machine()); print("tcl_version=" + str(root.tk.call("info", "patchlevel"))); print("tk_version=" + str(root.tk.call("package", "provide", "Tk"))); root.destroy(); assert platform.machine() == "arm64"' | tee "$EVIDENCE_DIR/python-tk-versions.txt"
+
+      - name: Create isolated test and build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/bin/python3.12 -m venv .venv-macos
+          "$VENV_PYTHON" -m pip install --disable-pip-version-check pytest pyinstaller==6.21.0
+          mkdir -p "$EVIDENCE_DIR" "$BUILD_ROOT/spec" "$BUILD_ROOT/work" "$BUILD_ROOT/dist" artifacts
+
+      - name: Run the complete test suite, including GUI tests
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          "$VENV_PYTHON" -m pytest tests/ -q --junitxml="$EVIDENCE_DIR/pytest-junit.xml" 2>&1 | tee "$EVIDENCE_DIR/pytest.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          "$VENV_PYTHON" -c 'import json,sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"command":"python -m pytest tests/ -q","exit_code":int(sys.argv[2]),"suite":"tests/ (no deselections)","candidate_status":"passed" if int(sys.argv[2]) == 0 else "candidate_with_test_failures"},indent=2)+"\n",encoding="utf-8")' "$EVIDENCE_DIR/test-results.json" "$status"
+          exit "$status"
+
+      - name: Build onedir windowed app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$VENV_PYTHON" -c 'from PyInstaller.utils.hooks.tcl_tk import tcltk_info; count=len(tcltk_info.data_files); print("collected_tcl_tk_hook_data_files=" + str(count)); assert count > 0, "PyInstaller did not detect Tcl/Tk payload files"' | tee "$EVIDENCE_DIR/pyinstaller-tcl-tk-hook.txt"
+          set +e
+          "$VENV_PYTHON" -m PyInstaller \
+            --clean --noconfirm --onedir --windowed \
+            --name ScreeningWorkbench \
+            --paths src \
+            --specpath "$BUILD_ROOT/spec" \
+            --workpath "$BUILD_ROOT/work" \
+            --distpath "$BUILD_ROOT/dist" \
+            src/screening_workbench/app.py 2>&1 | tee "$EVIDENCE_DIR/pyinstaller-build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          [[ "$build_status" -eq 0 ]] || exit "$build_status"
+          app="$BUILD_ROOT/dist/ScreeningWorkbench.app"
+          [[ -d "$app/Contents" ]] || { echo "PyInstaller did not create the expected .app bundle" >&2; exit 1; }
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          binary="$app/Contents/MacOS/$executable"
+          architectures="$(lipo -archs "$binary")"
+          printf '%s\n' "$architectures" | tee "$EVIDENCE_DIR/app-architectures.txt"
+          [[ " $architectures " == *" arm64 "* ]] || { echo "Built app has no ARM64 slice: $architectures" >&2; exit 1; }
+          codesign -dv --verbose=4 "$app" > "$EVIDENCE_DIR/codesign-inspection.txt" 2>&1 || true
+
+      - name: Run source and packaged app smoke checks
+        id: smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH=src
+          "$VENV_PYTHON" scripts/macos_smoke.py \
+            --output "$EVIDENCE_DIR/smoke" \
+            --packaged-app "$BUILD_ROOT/dist/ScreeningWorkbench.app"
+
+      - name: Capture resolved build packages, license evidence, and package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$VENV_PYTHON" scripts/macos_package.py capture \
+            --output "$EVIDENCE_DIR" \
+            --app "$BUILD_ROOT/dist/ScreeningWorkbench.app"
+          "$VENV_PYTHON" scripts/macos_package.py package \
+            --app "$BUILD_ROOT/dist/ScreeningWorkbench.app" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$PACKAGE_ZIP" \
+            --candidate-label "$CANDIDATE_LABEL" \
+            --evidence-dir "$EVIDENCE_DIR"
+
+      - name: Upload candidate ZIP and build evidence
+        if: ${{ always() && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Screening-Workbench-1.1.0-macos-arm64-candidate
+          path: |
+            artifacts/Screening-Workbench-1.1.0-macos-arm64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build evidence and failure logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Screening-Workbench-macos-arm64-evidence-${{ github.run_id }}
+          path: artifacts/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Validate candidate evidence and enforce gates after upload
+        if: always()
+        shell: bash
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$PACKAGE_OUTCOME" != "success" ]]; then
+            echo "Package creation or ZIP validation failed; see preceding steps." >&2
+            exit 1
+          fi
+          if [[ "$SMOKE_OUTCOME" != "success" ]]; then
+            echo "Source or packaged-app smoke failed; candidate artifact was retained for inspection." >&2
+            exit 1
+          fi
+          "$VENV_PYTHON" -c 'import json,sys; data=json.load(open(sys.argv[1],encoding="utf-8")); assert data.get("source_app",{}).get("status")=="passed", "source smoke did not pass"; assert data.get("packaged_app",{}).get("status")=="passed", "packaged open-action smoke did not pass"' "$EVIDENCE_DIR/smoke/evidence.json"
+          if [[ "$TEST_OUTCOME" != "success" ]]; then
+            echo "Full pytest suite failed; candidate artifact was retained and is not a passing build." >&2
+            exit 1
+          fi
