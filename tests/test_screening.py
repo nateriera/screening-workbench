@@ -426,18 +426,29 @@ def test_undo_last_vote_with_nothing_to_undo_returns_none(tmp_path):
     conn.close()
 
 
-def test_undo_last_vote_numbers_are_stable_and_real(tmp_path):
+def test_undo_last_vote_numbers_are_stable_and_real(tmp_path, monkeypatch):
     """UI reference target §11: '#N' per recent decision must be a real,
     stable number (screen_votes' implicit rowid), not decorative text."""
     conn, occ_ids = _setup_two(tmp_path)
+
+    # Force equal event timestamps and UUID order opposite insertion order.
+    # Lexical vote_id ordering must not decide which decision is newest.
+    monkeypatch.setattr(screening.db, "now_rfc3339", lambda: "2026-01-01T00:00:00.000000Z")
+    vote_ids = iter(("vote_z", "vote_a", "vote_b"))
+    monkeypatch.setattr(screening, "new_id", lambda _prefix: next(vote_ids))
     screening.cast_vote(conn, occurrence_id=occ_ids[0], reviewer_id="revA", decision="include")
     screening.cast_vote(conn, occurrence_id=occ_ids[1], reviewer_id="revA", decision="maybe")
+    screening.cast_vote(conn, occurrence_id=occ_ids[0], reviewer_id="revB", decision="include")
 
     recent = screening.recent_decisions_for_reviewer(conn, "revA")
     assert recent[0]["number"] > recent[1]["number"]  # newest first, strictly increasing
+    assert [row["occurrence_id"] for row in recent] == [occ_ids[1], occ_ids[0]]
+    assert screening.recent_decisions_for_reviewer(conn, "revA", stage="full_text") == []
+    assert len(screening.recent_decisions_for_reviewer(conn, "revB")) == 1
 
     undone = screening.undo_last_vote(conn, "revA")
     assert undone["n"] == recent[0]["number"]
+    assert undone["occurrence_id"] == recent[0]["occurrence_id"]
     conn.close()
 
 

@@ -415,7 +415,7 @@ def recent_decisions_for_reviewer(conn, reviewer_id: str, *, stage: str = "title
         " FROM screen_votes sv"
         " JOIN occurrence_fields of ON of.occurrence_id = sv.occurrence_id"
         " WHERE sv.reviewer_id = ? AND sv.stage = ? AND sv.superseded_at IS NULL"
-        " ORDER BY sv.created_at DESC, sv.vote_id DESC LIMIT ?",
+        " ORDER BY sv.created_at DESC, sv.rowid DESC LIMIT ?",
         (reviewer_id, stage, limit),
     ).fetchall()
     out = []

@@ -38,6 +38,7 @@ jobs:
           arch="$(uname -m)"
           printf 'runner_architecture=%s\n' "$arch" | tee "$EVIDENCE_DIR/runner-architecture.txt"
           [[ "$arch" == "arm64" ]] || { echo "Expected Apple silicon runner; found $arch" >&2; exit 1; }
+          sysctl -n machdep.cpu.brand_string | tee "$EVIDENCE_DIR/runner-cpu.txt"
           printf 'source_commit=%s\nbase_commit=15582f25675d12ac62e76995bc8ed9167b966b1f\n' "$(git rev-parse HEAD)" > "$EVIDENCE_DIR/source-identity.txt"
 
       - name: Install official Python.org Python with Tk
