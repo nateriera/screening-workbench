@@ -1,6 +1,6 @@
 # Screening Workbench v1 — visual direction 01: Field Notes
 
-**Status:** owner-authorized visual direction for initial implementation. This is an original project decision, not a substitute for a pre-existing Klaro brand guide. **Primary surface:** Operate. Screening and review queues are work surfaces; density, keyboard focus, and clear decision state take priority over marketing composition.
+**Status:** owner-authorized visual direction for initial implementation. This is an original project decision, not a substitute for a pre-existing external brand guide. **Primary surface:** Operate. Screening and review queues are work surfaces; density, keyboard focus, and clear decision state take priority over marketing composition.
 
 ## Design intent
 
@@ -66,6 +66,6 @@ Make Screening Workbench feel like a careful research instrument: calm, legible,
 
 ## Implementation note
 
-This is an approved first-pass visual system for Screening Workbench, chosen after the owner authorized a new theme. It may evolve as real screens are implemented, but any change must preserve accessibility and the independent identity rule. Do not claim it is an existing Klaro design system.
+This is an approved first-pass visual system for Screening Workbench, chosen after the owner authorized a new theme. It may evolve as real screens are implemented, but any change must preserve accessibility and the independent identity rule. Do not claim it is an existing external design system.
 
 **2026-10-07:** Added `-soft`/`-border` decision-button and info-callout tints (derived tints of the existing `--include`/`--maybe`/`--exclude`/`--info` tokens, not new hues) per the Screening-tab UI reference target — see `docs/ui-reference-screening.md`.

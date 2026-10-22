@@ -14,4 +14,4 @@ This limitation is accepted for the v1 local/offline product model; Screening Wo
 
 ## Reporting a vulnerability
 
-Do not include project databases, reviewer packets, vote exports, PDFs, or other user data in a vulnerability report. Provide a minimal synthetic reproduction and the affected Screening Workbench version/commit instead. Coordinate disclosure privately with the repository owner before public disclosure.
+Do not include project databases, reviewer packets, vote exports, PDFs, or other user data in a vulnerability report. Provide a minimal synthetic reproduction and the affected Screening Workbench version/commit instead. Coordinate disclosure privately with the repository owner before public disclosure. Use GitHub's private vulnerability reporting for this repository (the **Security** tab → **Report a vulnerability**). If that route is unavailable, open a public issue titled "Security contact request" containing no vulnerability details, and a private channel will be arranged.

@@ -2,6 +2,8 @@
 
 **Free, local-first systematic-review screening.**
 
+[![CI](https://github.com/nateriera/screening-workbench/actions/workflows/ci.yml/badge.svg)](https://github.com/nateriera/screening-workbench/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/nateriera/screening-workbench)](https://github.com/nateriera/screening-workbench/releases/latest)
+
 Screening Workbench is a free, local-first workbench for systematic-review title/abstract and full-text screening. It has no account, cloud sync, or telemetry. Records stay in the local project unless you explicitly export them; reviewer packets contain record data and must be handled as sensitive files.
 
 ## Who it's for
@@ -24,7 +26,9 @@ More screens (Duplicates, Conflicts, Full-text, Studies, Maybe re-review) are ca
 
 Windows 11 x64.
 
-**Pre-release:** no downloadable Windows package is cleared for release yet. The exact application build, bundled-component notices, SBOM, and release package still require review. Do not use an unsigned-build bypass instruction as a substitute for verifying a release.
+**Download the latest release:** [v1.0.0](https://github.com/nateriera/screening-workbench/releases/tag/v1.0.0) — `Screening-Workbench-1.0.0-windows-x64.zip` (16,702,642 bytes; SHA-256 `3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c`). Unzip and run `ScreeningWorkbench.exe` — no installer.
+
+The build is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC" on first launch. Choose **More info → Run anyway**, and verify your download against the SHA-256 above. Code signing is planned for a future release; the release's full verification record is `docs/release-gate-1.0.0.md`.
 
 **Run from source** (Windows 11 x64):
 

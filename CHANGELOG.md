@@ -6,6 +6,12 @@ release.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.0] — 2026-10-21
+
+First public release (Windows 11 x64 package on the releases page).
+
 ### Added
 - Full screening pipeline in the free core: keyboard-first title/abstract
   queue (I/M/E/J/K), Maybe re-review, fuzzy duplicate detection with a

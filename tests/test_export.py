@@ -166,7 +166,7 @@ def test_incomplete_export_discloses_issues(tmp_path):
 
 
 # Regression found during the 2026-10-07 dogfood run against the real
-# Julia corpus: a project with included title/abstract votes but zero
+# Dogfood corpus: a project with included title/abstract votes but zero
 # reports was incorrectly marked complete (nothing else was "pending").
 def test_maybe_vote_blocks_completeness_as_screening_pending(tmp_path):
     conn, occ_id = _setup(tmp_path)

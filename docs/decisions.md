@@ -21,7 +21,7 @@ Keep this log append-only by adding dated entries. Distinguish explicit owner ru
 - **PRISMA direction:** explicit study/report linking and PRISMA counts are required v1 scope; counts distinguish reports and studies.
 
 
-- **Owner ruling (2026-10-06):** Project updates should be sent in this chat; Slack is not required.
+- **Owner ruling (2026-10-06):** Project updates are coordinated directly with the owner; no separate status channel is required.
 - **Safety boundary:** Private reference data is used only for local dogfood; do not commit it or transmit rows, record text, identity, or derived counts. Local reference reconciliation does not verify the remaining milestones.
 - **Owner ruling (2026-10-06):** A new design theme is authorized. `docs/design-system.md` is the chosen original first-pass Screening Workbench visual system.
 - **BibTeX discrepancy resolved:** The supplied first artifact listed BibTeX, but the owner-approved v1 product brief supports RIS, CSV, and PubMed XML only. `behavioral-spec-import-field-mapping.md` and the screening workflow now explicitly exclude BibTeX from v1. Expanding formats later requires an owner scope decision.

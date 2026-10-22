@@ -178,7 +178,7 @@ def compute_completeness(conn) -> tuple[bool, list[str]]:
     # corpus export may only be called complete if all included reports
     # have owner-confirmed study associations and study-inclusion
     # decisions; otherwise label it incomplete and state why."). Found via
-    # the 2026-10-07 dogfood run against the real Julia corpus, where a
+    # the 2026-10-07 dogfood run against the real dogfood corpus, where a
     # project with 98 included-but-unpromoted occurrences and zero reports
     # was incorrectly reported as complete before this check existed.
     from screening_workbench import reports as reports_mod

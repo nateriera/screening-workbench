@@ -1,10 +1,62 @@
-# Historical specification and input inventory
+# Documentation
 
-This page preserves the project inventory and status recorded during
-the October 2026 implementation. It is not a live status report. For
-current setup and release readiness, start with the repository
-[`README.md`](../README.md), `docs/acceptance/`, and
-`docs/ui-convergence-log.md`.
+Start with the repository [`README.md`](../README.md) for installation
+and the quickstart. This index covers the rest.
+
+## Using and understanding the app
+
+- [`docs/packets.md`](packets.md) — the reviewer packet and votes file
+  formats used for two-computer blind review, including the versioned
+  format identifiers and merge rules.
+- [`docs/ui-references/`](ui-references/) — per-tab screen references
+  and live captures.
+- [`docs/design-system.md`](design-system.md) — the Field Notes visual
+  system and its accessibility gates.
+
+## Behavior specifications (clean room)
+
+The app is implemented from public-source behavioral specifications:
+
+- [`docs/specs/`](specs/) — screening workflow, import field mapping,
+  duplicate detection, PRISMA counts and export; plus a deferred
+  future-scope spec for assistive relevance ranking (not in v1).
+- [`docs/acceptance/`](acceptance/) — acceptance procedures and the
+  dogfood milestone definition. Public evidence uses synthetic
+  fixtures; reference-corpus data is never committed.
+- [`docs/decisions.md`](decisions.md) — the project's decision record.
+
+## Building and packaging
+
+- [`docs/packaging.md`](packaging.md) — the verified, reproducible
+  Windows build procedure (PyInstaller onedir), including the Tcl/Tk
+  workaround for CPython 3.14.7.
+
+## Licensing and release records
+
+- [`docs/license-audit.md`](license-audit.md) — dependency licensing
+  review and verdict.
+- [`docs/license-review.md`](license-review.md) — release-artifact
+  licensing review for the shipped package.
+- [`docs/sbom.cdx.json`](sbom.cdx.json) — CycloneDX SBOM for the
+  release package.
+- [`docs/notices/`](notices/) — third-party license texts bundled in
+  the package.
+- [`docs/release-gate-1.0.0.md`](release-gate-1.0.0.md) — the v1.0.0
+  release gate record: artifact identity, provenance review,
+  entitlement attestation, and publication.
+
+Working papers from the October 2026 implementation (the product brief,
+process notes, and the UI convergence log) are kept in the project's
+private build repository; the specifications and records above are the
+public trail.
+
+---
+
+## Archive — historical inventory (October 2026)
+
+The inventory below is preserved as recorded during the October 2026
+implementation. It is not a live status report; file references to the
+working papers named above resolve in the private build repository.
 
 ## Available at kickoff
 
@@ -17,7 +69,7 @@ current setup and release readiness, start with the repository
 
 ## Current project status
 
-**Current as of 2026-10-12.** v1.0.0 shipped (Windows 11 x64 packaged build). Directives C/D and the v2 UI convergence merged to `main` (`ef821c62`); Directive F — full visual parity — completed all four phases and merged to `main` (`f605b60`): all seven tabs re-verified in the new Field Notes-themed card shell (theme module `src/screening_workbench/theme.py`), final convergence 171/174 across the seven reference checklists, full suite 362 passed. The visual authority is `docs/design-system.md` (Field Notes — owner carve-out Oct 9 2026; never the Klaro brand tokens). Per-tab UI evidence lives under `docs/ui-references/`; the review record is `docs/ui-convergence-log.md`.
+**Current as of 2026-10-12.** v1.0.0 shipped (Windows 11 x64 packaged build). Directives C/D and the v2 UI convergence merged to `main` (`ef821c62`); Directive F — full visual parity — completed all four phases and merged to `main` (`f605b60`): all seven tabs re-verified in the new Field Notes-themed card shell (theme module `src/screening_workbench/theme.py`), final convergence 171/174 across the seven reference checklists, full suite 362 passed. The visual authority is `docs/design-system.md` (Field Notes — owner carve-out Oct 9 2026; never an unrelated project’s brand tokens). Per-tab UI evidence lives under `docs/ui-references/`; the review record is `docs/ui-convergence-log.md`.
 
 Earlier stack/toolchain rulings still stand: Python + Tkinter + SQLite, stdlib-only (no third-party Python dependencies), CSV/RIS/PubMed XML import, SVG-only PRISMA, ranking deferral, Windows 11 x64, PyInstaller onedir packaging. See `docs/license-audit.md` for the full licensing evidence trail and verdict. Final release SBOM/attribution notices and any future third-party dependency still require separate review; no publish/deploy without further authorization.
 
@@ -43,4 +95,4 @@ Tests map directly to the PRISMA spec's 9 acceptance-test fixtures (`tests/test_
 
 Private reference data, corpus identity, and all derived counts remain local-only and are intentionally omitted from this repository. Public acceptance evidence uses synthetic fixtures; local dogfood evidence must be redacted before sharing. Never send source records, abstracts, or row-level decisions to agents, online services, or external systems.
 
-5. **Original visual direction:** Use `docs/design-system.md`, the owner-authorized original Screening Workbench first-pass system. It is not the Klaro design system. Preserve independent visual identity/accessibility; this prerequisite is satisfied.
+5. **Original visual direction:** Use `docs/design-system.md`, the owner-authorized original Screening Workbench first-pass system. It is not an external brand design system. Preserve independent visual identity/accessibility; this prerequisite is satisfied.

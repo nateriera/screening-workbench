@@ -1,22 +1,57 @@
-# Build coordination and operating rules
+# Contributing to Screening Workbench
 
-This document records project-specific constraints for contributors. Product behavior is defined by approved behavioral specs under `docs/specs/`, not by inspection of incumbent apps.
+Thanks for your interest. Screening Workbench is a clean-room,
+local-first desktop app (Python + Tkinter + SQLite, standard library
+only). Contributions are welcome under the constraints below — they are
+the project's identity, not red tape.
 
-## Authority and clean-room rules
-- Use the supplied product brief, approved behavioral specs, and acceptance criteria as source of truth.
-- Do not access incumbent apps or create accounts to learn behavior. Public sources listed in specs are permitted; describe behavior abstractly and preserve source URLs/dates.
-- Keep implementations, UI copy, artwork, and assets original. Apply the Field Notes design system per `docs/design-system.md` (the owner-authorized visual system for Screening Workbench; Oct 9 2026 carve-out: Screening Workbench uses Field Notes, never the Klaro brand tokens). Do not invent a substitute brand system; record the blocker.
-- Do not integrate a third-party dependency before its exact release/commit, actual license, and relevant transitive licenses are recorded in `docs/license-audit.md`.
+## Development setup
 
-## Data and external-state safety
-- All screening data stays in local project files. Never add the Julia corpus, abstracts, PDFs, screening decisions, or row-level derivatives to this repository.
-- Do not send local research data to subagents, web services, Slack, GitHub issues, or other external systems.
-- Use synthetic fixtures for committed tests. For dogfood, load the reference corpus from its existing local location, record aggregate counts only, and keep generated databases/exports outside Git.
-- Networking is disabled for cold-offline verification. Only explicitly user-triggered import flows may use network access.
-- No publication, merge, release, repository visibility change, or other external side effect without Nate's explicit direction.
+Windows 11 x64 is the release target; development on other platforms
+works for most of the suite (a few GUI tests assert display geometry
+calibrated to the reference machine and are deselected in CI).
 
-## Build gates
-1. Complete and review all behavioral specs and license audit before integrating dependencies or implementation.
-2. Keep deviations explicit, with a rationale and owner ruling when scope/data model changes.
-3. Test local persistence, immutable audit sequencing, blindness as a storage-level information boundary, import mapping, dedup reversibility, conflict resolution, PRISMA invariants, keyboard use, and offline behavior.
-4. Run the full dogfood milestone and preserve a redacted evidence log with totals only.
+```powershell
+git clone https://github.com/nateriera/screening-workbench.git
+cd screening-workbench
+# Python 3.12+ (developed on CPython 3.14) with Tkinter — both ship in
+# the standard python.org Windows installer. No third-party runtime
+# dependencies.
+$env:PYTHONPATH = "src"
+python -m screening_workbench.app   # run the app
+python -m pytest tests/ -q          # run the test suite (pytest is the only dev dependency)
+```
+
+## Ground rules
+
+- **Clean room.** Behavior is defined by the behavioral specifications
+  in `docs/specs/`, written from public sources only. Do not access
+  incumbent screening applications (accounts, trials, or inspection) to
+  learn behavior, and do not copy proprietary UI text, labels, layouts,
+  or assets. New behavior starts as a spec change.
+- **No third-party runtime dependencies** without a license audit entry
+  in `docs/license-audit.md` (exact release, actual license, transitive
+  licenses) and maintainer approval. GPL/AGPL dependencies are not used.
+- **Local-first is a boundary.** No accounts, telemetry, cloud sync, or
+  network calls in core workflows. Never commit real screening data —
+  records, abstracts, PDFs, project databases, or reviewer packets.
+  Tests use synthetic fixtures only.
+- **Blind-review integrity is a correctness boundary**, as are audit
+  sequencing and PRISMA count reconciliation. Changes touching them
+  need tests demonstrating the boundary holds.
+- **Design.** UI work follows the Field Notes system in
+  `docs/design-system.md`, including its accessibility gates.
+
+## Pull requests
+
+- Test-first for behavior changes; the full suite must pass.
+- Keep deviations from the specs explicit in the PR description, with a
+  rationale.
+- Scope, licensing exceptions, and releases are maintainer decisions.
+
+## Reporting bugs
+
+Open an issue with the app version (or commit), your Windows version,
+and minimal synthetic steps to reproduce. Do not attach real project
+databases, packets, vote files, or PDFs. For security reports, see
+`SECURITY.md`.
