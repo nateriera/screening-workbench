@@ -75,6 +75,23 @@ _original_update = tk.Misc.update
 def _tracked_update(self, *args, **kwargs):
     root = self._root()
     start = time.monotonic()
+    if os.environ.get("SWB_DIAG_UPDATE_IDLE") == "1":
+        return _tracked_update_idletasks(self, *args, **kwargs)
+    controls = {}
+    matching_apps = [app for app in _apps if app.root.tk is root.tk]
+    if os.environ.get("SWB_DIAG_SELECT_FULLTEXT") == "1":
+        for app in matching_apps:
+            fulltext = next((tab for tab in app.notebook.tabs()
+                             if app.notebook.tab(tab, "text") == "Full-text"), None)
+            if fulltext is not None:
+                app.notebook.select(fulltext)
+                controls["selected_fulltext_tab"] = fulltext
+                break
+    if os.environ.get("SWB_DIAG_DEICONIFY") == "1":
+        root.deiconify()
+        controls["deiconified_before_update"] = True
+    if controls:
+        _write("update_controls_applied", root_id=id(root), tk_id=id(root.tk), controls=controls)
     _write("update_begin", widget=str(self), root_id=id(root), tk_id=id(root.tk),
            default_root_id=id(tk._default_root) if tk._default_root else None,
            configure_count=_configure_counts.get(id(root.tk), 0), roots=[_root_info(item) for item in _roots])
@@ -87,6 +104,54 @@ def _tracked_update(self, *args, **kwargs):
 
 
 tk.Misc.update = _tracked_update
+_original_update_idletasks = tk.Misc.update_idletasks
+
+
+def _tracked_update_idletasks(self, *args, **kwargs):
+    if os.environ.get("SWB_DIAG_UPDATE_IDLE") != "1":
+        return _original_update_idletasks(self, *args, **kwargs)
+    root = self._root()
+    start = time.monotonic()
+    _write("update_idletasks_substitute_begin", widget=str(self), root_id=id(root), tk_id=id(root.tk),
+           configure_count=_configure_counts.get(id(root.tk), 0))
+    try:
+        return _original_update_idletasks(self, *args, **kwargs)
+    finally:
+        _write("update_idletasks_substitute_end", widget=str(self), root_id=id(root), tk_id=id(root.tk),
+               elapsed_seconds=round(time.monotonic() - start, 6),
+               configure_count=_configure_counts.get(id(root.tk), 0))
+
+
+tk.Misc.update_idletasks = _tracked_update_idletasks
+
+_original_event_generate = tk.Misc.event_generate
+
+
+def _tracked_event_generate(self, sequence, *args, **kwargs):
+    root = self._root()
+    trace_selection = sequence == "<<ListboxSelect>>"
+    if trace_selection:
+        _write("event_generate_begin", sequence=sequence, root_id=id(root), tk_id=id(root.tk),
+               widget=str(self), inline_control=os.environ.get("SWB_DIAG_INLINE_SELECTION") == "1")
+    if sequence == "<<ListboxSelect>>" and os.environ.get("SWB_DIAG_INLINE_SELECTION") == "1":
+        app = next((candidate for candidate in reversed(_apps)
+                    if candidate.root.tk is root.tk and candidate.report_list is self), None)
+        if app is not None:
+            _write("selection_event_inline", root_id=id(root), tk_id=id(root.tk), widget=str(self))
+            app._render_fulltext_detail()
+            if trace_selection:
+                _write("event_generate_end", sequence=sequence, root_id=id(root), tk_id=id(root.tk),
+                       widget=str(self), inline_control=True)
+            return None
+    try:
+        return _original_event_generate(self, sequence, *args, **kwargs)
+    finally:
+        if trace_selection:
+            _write("event_generate_end", sequence=sequence, root_id=id(root), tk_id=id(root.tk),
+                   widget=str(self), inline_control=False)
+
+
+tk.Misc.event_generate = _tracked_event_generate
 
 try:
     from screening_workbench.app import ScreeningWorkbenchApp
