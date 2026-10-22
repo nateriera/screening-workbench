@@ -235,3 +235,15 @@ With the documentary basis (item 3), the API-set enumeration (rebuild
 addendum), and this attestation, gate item 3 is closed in full. Remaining
 release steps: the `-final.zip` handoff copy, SignPath signing, and the
 publish call.
+
+## Addendum — 2026-10-21 publishing sequence (signing)
+
+The publisher reaffirmed the 2025-10-08 roadmap ruling on code signing:
+**v1.0.0 ships unsigned**, with a documented SmartScreen note in the release
+notes. The SignPath Foundation application follows the first public release;
+the first signed build is v1.1 or later; once signing starts, the certificate
+is never rotated (SmartScreen reputation accrues to the stable identity), and
+the first signed release is documented as a manual reinstall for early
+adopters. Earlier "SignPath signing" entries in this report's step lists are
+superseded by this sequence. Remaining release steps: the `-final.zip`
+handoff copy and the publish call (tag, GitHub release, upload).
