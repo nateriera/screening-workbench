@@ -6,6 +6,7 @@ this module. Classic Tk widgets consume the same tokens and option factories.
 from __future__ import annotations
 
 import tkinter.font as tkfont
+import sys
 from tkinter import ttk
 
 TTK_BASE_THEME = "clam"
@@ -59,9 +60,12 @@ FONT_FALLBACKS = {
 def resolve_font(root, family: str) -> str:
     """Return the first installed font from a named Field Notes stack."""
     available = {name.casefold() for name in tkfont.families(root)}
+    candidates = FONT_FALLBACKS[family]
+    if family == FONT_UI and sys.platform == "darwin":
+        candidates = ("-apple-system", "Helvetica Neue", "TkDefaultFont")
     return next(
-        (name for name in FONT_FALLBACKS[family] if name.casefold() in available),
-        FONT_FALLBACKS[family][-1],
+        (name for name in candidates if name.casefold() in available),
+        candidates[-1],
     )
 
 

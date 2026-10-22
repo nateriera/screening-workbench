@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import tkinter as tk
 from unittest.mock import patch
 from tkinter import ttk
@@ -69,9 +70,14 @@ def test_global_theme_applies_field_notes_colors_and_font_fallbacks(tmp_path):
     assert "clam" in style.theme_names()  # no third-party toolkit/theme
     assert style.lookup("Header.TFrame", "padding") == "16 8"
     assert "padding" in theme.SPACING
-    assert theme.resolve_font(root, theme.FONT_UI) == "Segoe UI"
-    assert theme.resolve_font(root, theme.FONT_READING) == "Palatino Linotype"
-    assert theme.resolve_font(root, theme.FONT_MONO) == "Cascadia Code"
+    if sys.platform == "win32":
+        assert theme.resolve_font(root, theme.FONT_UI) == "Segoe UI"
+        assert theme.resolve_font(root, theme.FONT_READING) == "Palatino Linotype"
+        assert theme.resolve_font(root, theme.FONT_MONO) == "Cascadia Code"
+    else:
+        assert app.font_ui == theme.resolve_font(root, theme.FONT_UI)
+        assert app.font_reading == theme.resolve_font(root, theme.FONT_READING)
+        assert app.font_mono == theme.resolve_font(root, theme.FONT_MONO)
     fallback_root = tk.Tk()
     fallback_root.withdraw()
     fallback_root.tk.call("font", "families")
@@ -1381,6 +1387,7 @@ def test_open_attachment_via_ui_writes_temp_copy_and_starts_file(tmp_path, monke
 
     opened = []
     monkeypatch.setattr(os, "startfile", lambda p: opened.append(p), raising=False)
+    monkeypatch.setattr("screening_workbench.app.subprocess.run", lambda args, **kw: opened.append(args[1]))
     app.attachment_listbox.selection_set(0)
     app._open_selected_attachment()
 
@@ -3395,7 +3402,7 @@ def test_prisma_snapshot_uses_field_notes_type_hierarchy_without_changing_copy(t
         if line.startswith("    reconciles:")
     )
     assert "snapshot-reconcile" in app.prisma_counts_text.tag_names(f"{reconcile_line}.0")
-    assert theme.FONT_UI in app.prisma_counts_text.cget("font") and "9" in app.prisma_counts_text.cget("font")
+    assert theme.resolve_font(root, theme.FONT_UI) in app.prisma_counts_text.cget("font") and "9" in app.prisma_counts_text.cget("font")
     root.destroy()
 
 

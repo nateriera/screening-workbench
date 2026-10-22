@@ -20,6 +20,8 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -47,6 +49,11 @@ def validate_csv_mapping(mapping: dict[int, str]) -> str | None:
     if invalid:
         return f"Unsupported field mapping: {', '.join(sorted(invalid))}."
     return None
+
+
+def _mousewheel_units(delta: int) -> int:
+    """Tk Aqua supplies small wheel deltas; Windows uses multiples of 120."""
+    return -delta if sys.platform == "darwin" else int(-delta / 120)
 
 
 class ScreeningWorkbenchApp:
@@ -3126,13 +3133,16 @@ class ScreeningWorkbenchApp:
         except (OSError, ValueError) as exc:
             messagebox.showerror("Open failed", f"Could not read {filename}: {exc}")
             return
-        tmp_dir = tempfile.mkdtemp(prefix="screening-workbench-attachment-")
-        tmp_path = os.path.join(tmp_dir, filename)
-        with open(tmp_path, "wb") as fh:
-            fh.write(data)
         try:
-            os.startfile(tmp_path)  # Windows-only, per the owner-approved v1 stack
-        except OSError as exc:
+            tmp_dir = tempfile.mkdtemp(prefix="screening-workbench-attachment-")
+            tmp_path = os.path.join(tmp_dir, filename)
+            with open(tmp_path, "wb") as fh:
+                fh.write(data)
+            if sys.platform == "win32":
+                os.startfile(tmp_path)
+            else:
+                subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", tmp_path], check=True)
+        except (OSError, AttributeError, subprocess.SubprocessError) as exc:
             messagebox.showerror("Open failed", f"Could not open {filename}: {exc}")
 
     def _remove_selected_attachment(self) -> None:
@@ -3660,7 +3670,7 @@ class ScreeningWorkbenchApp:
         self.prisma_scroll_canvas.bind("<Configure>", _on_outer_canvas_configure)
 
         def _on_mousewheel(event):
-            self.prisma_scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self.prisma_scroll_canvas.yview_scroll(_mousewheel_units(event.delta), "units")
         self.prisma_scroll_canvas.bind(
             "<Enter>", lambda e: self.prisma_scroll_canvas.bind_all("<MouseWheel>", _on_mousewheel),
         )
