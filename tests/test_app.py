@@ -28,6 +28,27 @@ def _tk_available():
 requires_tk = pytest.mark.skipif(not _tk_available(), reason="no Tk display available")
 
 
+@pytest.fixture(autouse=True)
+def cleanup_tk_roots(monkeypatch):
+    """Release every test-owned Tcl interpreter even when an assertion fails."""
+    roots = []
+    original_init = tk.Tk.__init__
+
+    def track_root(root, *args, **kwargs):
+        original_init(root, *args, **kwargs)
+        roots.append(root)
+
+    monkeypatch.setattr(tk.Tk, "__init__", track_root)
+    yield
+    for root in reversed(roots):
+        try:
+            exists = root.winfo_exists()
+        except tk.TclError:
+            continue  # The test already destroyed this interpreter.
+        if exists:
+            root.destroy()
+
+
 @requires_tk
 def test_global_ttk_button_disabled_foreground_is_muted_without_changing_enabled_or_focus(tmp_path):
     from screening_workbench import theme
@@ -484,9 +505,25 @@ def test_phase2_duplicates_tab_uses_three_card_shell_preserving_controls(tmp_pat
     app.notebook.select(2)
     root.deiconify()
     root.update()
-    assert app.dup_queue_card.winfo_width() >= 250
-    assert app.dup_compare_card.winfo_width() >= 650
-    assert app.dup_resolution_card.winfo_width() >= 290
+    # Window managers can constrain the requested 1280px window to the screen.
+    # Keep the configured layout contract and check allocation within the real
+    # viewport; minima apply to grid cells, and padding reduces card widths.
+    assert app.dup_compare_card.cget("width") == 656
+    assert app.dup_resolution_card.cget("width") == 292
+    assert app.dup_columns.winfo_width() >= 250 + 420 + 280
+    for column, card, minimum, weight, left, right in (
+        (0, app.dup_queue_card, 250, 25, 0, 6),
+        (1, app.dup_compare_card, 420, 48, 6, 6),
+        (2, app.dup_resolution_card, 280, 28, 6, 0),
+    ):
+        config = app.dup_columns.grid_columnconfigure(column)
+        assert config["minsize"] == minimum
+        assert config["weight"] == weight
+        x, _, width, _ = app.dup_columns.grid_bbox(column, 0)
+        assert width >= minimum
+        assert card.winfo_x() == x + left
+        assert card.winfo_width() == width - left - right
+        assert x + width <= app.dup_columns.winfo_width()
     assert app.dup_compare_text.cget("wrap") == "none"
     assert app.dup_compare_xscroll.winfo_manager() == "pack"
     assert app.dup_list.size() == 1
@@ -1484,12 +1521,14 @@ def test_fulltext_tab_maybe_button_is_non_terminal_and_reassessable(tmp_path):
 
 
 @requires_tk
-def test_fulltext_reason_choice_sets_value_and_terminal_exclude_uses_it_without_prompt(tmp_path):
-    """Isolate the selected-reason consumer from Tk Radiobutton.invoke,
-    which does not dispatch commands for withdrawn roots; assert the saved
-    exclusion reason and no duplicate picker invocation."""
+@pytest.mark.parametrize("earlier_root", [False, True])
+def test_fulltext_reason_choice_sets_value_and_terminal_exclude_uses_it_without_prompt(tmp_path, earlier_root):
+    """The visible radio saves its reason, even with another Tk root alive."""
     from screening_workbench import reports, screening
 
+    if earlier_root:
+        other_root = tk.Tk()
+        other_root.deiconify()
     root = tk.Tk()
     root.withdraw()
     app = ScreeningWorkbenchApp(root, str(tmp_path / "fulltext-reason-value.sqlite"), reviewer_id="owner")
@@ -1506,6 +1545,7 @@ def test_fulltext_reason_choice_sets_value_and_terminal_exclude_uses_it_without_
     radio = next(button for button in app.fulltext_reason_radios if button.cget("text") == reason)
     assert str(radio.cget("state")) == "normal"
     radio.invoke()
+    assert app.fulltext_reason_var.get() == reason
     app._prompt_exclusion_reason = lambda: (_ for _ in ()).throw(AssertionError("unexpected duplicate reason picker"))
     app._report_assess("excluded")
     saved = app.conn.execute(
@@ -1513,6 +1553,31 @@ def test_fulltext_reason_choice_sets_value_and_terminal_exclude_uses_it_without_
     ).fetchone()
     assert saved["full_text_outcome"] == "excluded"
     assert saved["exclusion_reason"] == reason
+    root.destroy()
+
+
+@requires_tk
+def test_fulltext_reason_choice_survives_same_report_rerender(tmp_path):
+    from screening_workbench import reports
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "fulltext-reason-rerender.sqlite"), reviewer_id="owner")
+    occ_ids = _seed_two_occurrences(app, "Synthetic same report reason", "Synthetic control")
+    screening.cast_vote(app.conn, occurrence_id=occ_ids[0], reviewer_id="owner", decision="include")
+    report_id = reports.promote_occurrence_to_report(app.conn, "owner", occ_ids[0])
+    app.refresh_all_tabs()
+    app.report_list.selection_set(app._report_ids.index(report_id))
+    app._render_fulltext_detail()
+    reason = screening.EXCLUSION_REASONS[2]
+    app.fulltext_reason_var.set(reason)
+
+    app._render_fulltext_detail()
+
+    assert app._selected_report_id() == report_id
+    assert app.fulltext_reason_var.get() == reason
+    assert str(app.fulltext_reason_radios[2].cget("state")) == "normal"
+    assert app.fulltext_reason_note.cget("text") == f"Selected exclusion reason: {reason}."
     root.destroy()
 
 
@@ -1680,6 +1745,9 @@ def test_fulltext_tab_queue_and_detail_show_report_and_source_identity(tmp_path)
 
     app.report_list.selection_set(0)
     app.report_list.event_generate("<<ListboxSelect>>")
+    # Aqua's full update can loop indefinitely with this withdrawn 1x1 root.
+    # Exercise the real event loop in a visible window, as a user would.
+    root.deiconify()
     root.update()
 
     detail = app.fulltext_detail_text.get("1.0", "end")

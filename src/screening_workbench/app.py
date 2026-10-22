@@ -368,14 +368,14 @@ class ScreeningWorkbenchApp:
                 row=row, column=1, sticky="w", padx=8, pady=3,
             )
             proposal_value = proposal.canonical_field if proposal.canonical_field in CSV_MAPPING_FIELDS else ""
-            variable = tk.StringVar(value=proposal_value or CSV_MAPPING_CHOICES[0])
+            variable = tk.StringVar(master=dialog, value=proposal_value or CSV_MAPPING_CHOICES[0])
             variables.append(variable)
             ttk.Combobox(
                 dialog, textvariable=variable, values=CSV_MAPPING_CHOICES,
                 state="readonly", width=16,
             ).grid(row=row, column=2, sticky="ew", padx=8, pady=3)
 
-        warning = tk.StringVar(value="")
+        warning = tk.StringVar(master=dialog, value="")
         warning_label = ttk.Label(dialog, textvariable=warning, foreground=theme.TOKENS["exclude"], wraplength=760)
         warning_label.grid(row=len(variables) + 2, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 0))
 
@@ -785,7 +785,7 @@ class ScreeningWorkbenchApp:
         self.screen_batch_combo.pack(side="left", padx=(4, 12))
         self._screen_batch_ids: list[str | None] = [None]  # index 0 = "All batches"
 
-        self.screen_undecided_only_var = tk.BooleanVar(value=True)
+        self.screen_undecided_only_var = tk.BooleanVar(master=self.root, value=True)
         ttk.Checkbutton(
             filter_row2, text="Undecided only (default)", variable=self.screen_undecided_only_var,
             command=self._apply_screening_filter,
@@ -1395,7 +1395,7 @@ class ScreeningWorkbenchApp:
         frame = ttk.Frame(self.notebook, padding=(16, 10))
         self.notebook.add(frame, text="Maybe re-review")
 
-        self.maybe_reference_state = tk.StringVar(value="")
+        self.maybe_reference_state = tk.StringVar(master=self.root, value="")
         ttk.Label(
             frame, textvariable=self.maybe_reference_state, style="SectionHeading.TLabel",
         ).pack(anchor="w")
@@ -1435,7 +1435,7 @@ class ScreeningWorkbenchApp:
         search_frame = ttk.Frame(self.maybe_queue_panel)
         search_frame.pack(fill="x", pady=(0, 4))
         ttk.Label(search_frame, text="Search:").pack(side="left")
-        self.maybe_search_var = tk.StringVar()
+        self.maybe_search_var = tk.StringVar(master=self.root)
         self.maybe_search_var.trace_add("write", lambda *a: self._on_maybe_search_changed())
         self.maybe_search_entry = ttk.Entry(search_frame, textvariable=self.maybe_search_var)
         self.maybe_search_entry.pack(side="left", fill="x", expand=True, padx=(6, 0))
@@ -1519,7 +1519,7 @@ class ScreeningWorkbenchApp:
             text="Use Exclude… to choose the required reason before saving.",
             wraplength=255, justify="left", foreground=theme.TOKENS["muted"],
         ).pack(anchor="w", pady=(0, 8))
-        self.maybe_reason_var = tk.IntVar(value=0)
+        self.maybe_reason_var = tk.IntVar(master=self.root, value=0)
         self.maybe_reason_buttons = []
         ttk.Style(self.root).configure("MaybeReason.TRadiobutton", padding=(4, 1))
         for index, reason_text in enumerate(screening.EXCLUSION_REASONS, start=1):
@@ -2744,7 +2744,7 @@ class ScreeningWorkbenchApp:
             bg=theme.TOKENS["info_soft"], fg=theme.TOKENS["info"], font=(self.font_ui, 9), justify="left", anchor="w", wraplength=245, padx=8, pady=7, height=3,
         )
         self.fulltext_reason_note.pack(fill="x", pady=(0, 6))
-        self.fulltext_reason_var = tk.StringVar(value="")
+        self.fulltext_reason_var = tk.StringVar(master=self.root, value="")
         self.fulltext_reason_radios = []
         ttk.Style(self.root).configure("FulltextReason.TRadiobutton", padding=(0, 0), font=(self.font_ui, 9))
         for reason in screening.EXCLUSION_REASONS:
@@ -2985,15 +2985,6 @@ class ScreeningWorkbenchApp:
         self._fulltext_rendered_report_id = selected_id
         if changed_report:
             self.fulltext_reason_var.set("")
-        else:
-            self.fulltext_selected_identity.config(text="Blind mode · report details are hidden")
-            self.fulltext_previous_btn.config(state="disabled")
-            self.fulltext_next_btn.config(state="disabled")
-            self.fulltext_reason_var.set("")
-            self.fulltext_reason_note.configure(text="Full-text details and decision controls are locked while blind mode is on.")
-            self.fulltext_reason_count_label.configure(text="Counts unavailable while blind")
-            for radio in self.fulltext_reason_radios:
-                radio.configure(state="disabled")
         self._update_fulltext_reason_state()
         self.fulltext_detail_text.config(state="normal")
         self.fulltext_detail_text.delete("1.0", "end")
@@ -3253,7 +3244,7 @@ class ScreeningWorkbenchApp:
         # _render_study_detail; empty for a study row or a single-
         # occurrence report (nothing to choose among).
         ttk.Label(self.studies_canonical_card, text="CANONICAL OCCURRENCE", style="SectionHeading.TLabel").pack(anchor="w", pady=(0, 5))
-        self.study_canonical_var = tk.StringVar()
+        self.study_canonical_var = tk.StringVar(master=self.root)
         self.study_canonical_frame = ttk.Frame(self.studies_canonical_card)
         self.study_canonical_frame.pack(anchor="nw", fill="both", expand=True)
         ttk.Label(

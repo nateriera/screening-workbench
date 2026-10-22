@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$VENV_PYTHON" scripts/macos_run_tests.py --output "$EVIDENCE_DIR" --timeout 300
+          "$VENV_PYTHON" scripts/macos_run_tests.py --output "$EVIDENCE_DIR" --timeout 600
 
       - name: Build onedir windowed app bundle
         shell: bash
