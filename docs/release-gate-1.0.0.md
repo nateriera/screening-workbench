@@ -174,3 +174,39 @@ provenance evidenced with its one limit recorded as an accepted tradeoff
 to the owner (item 3), and the package identity pinned with a short pre-signing
 checklist for the build PC (item 4). The release is handed back to the owner for
 the attestation, signing, and the publish call.
+
+## Addendum — 2026-10-21 rebuild (supersedes the package identity above)
+
+The 2026-10-13 artifact could not be located on the build PC (it had been stored
+in a prune-prone Hermes scratch folder), so the package was rebuilt from source
+commit `f93a88b` following `docs/packaging.md`, with the 14 `docs/notices/`
+files included, into a durable location
+(`C:\Users\nater\Documents\Chaff\release-1.0.0\`).
+
+New release identity: `Screening-Workbench-1.0.0-windows-x64.zip` —
+**16,702,642 bytes** — SHA-256
+`3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c` — 1,013
+entries.
+
+Build verification (builder report, 2026-10-21): CPython 3.14.7 x64 and
+PyInstaller 6.21.0; the CPython archive and Tcl/Tk MSI hashes matched
+`docs/packaging.md`; 929 Tcl/Tk data entries collected (839 Tcl and 90 Tk files
+in the tree, matching the verified fix); ZIP integrity check passed; smoke
+test — window titled "Screening Workbench -- systematic review screening",
+clean exit code 0; the 14 notice files are byte-for-byte equal to
+`docs/notices/`.
+
+Item 3 completion: the rebuilt bundle's API-set enumeration is now on record —
+`ucrtbase.dll` plus 40 `api-ms-win-*.dll` forwarders: 14 `api-ms-win-crt-*`
+(the Windows SDK UCRT redist family) and 26 `api-ms-win-core-*` (on neither
+redistribution list; the "keep" disposition in item 3 stands). The
+name-matching check left open in item 3 is closed.
+
+Carry-over note: item 2's component inventory stands for the rebuilt package
+by construction (same pinned, hash-verified sources). The per-DLL hashes in
+`docs/sbom.cdx.json` were measured on the 2026-10-13 tree.
+
+`docs/license-review.md` and `docs/sbom.cdx.json` have been amended to the new
+identity. Remaining owner steps are unchanged: the `-final.zip` handoff copy,
+the Visual Studio entitlement attestation, SignPath signing, and the publish
+call.

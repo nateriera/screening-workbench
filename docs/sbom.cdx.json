@@ -42,15 +42,15 @@
         },
         {
           "name": "release.archive.sha256",
-          "value": "349414995b6cb00c81ffbcbf0e83c0d721726a03aff7647c22a82acc8933e36c"
+          "value": "3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c"
         },
         {
           "name": "scope.note",
-          "value": "Draft/runtime SBOM from frozen distribution plus official CPython SBOM and provenance checks. The 2026-10-13 release ZIP was rebuilt with 14 notice files. It records unresolved native version/provenance differences: OpenSSL DLLs 3.5.8 vs official CPython SBOM 3.5.7; sqlite3.dll 3.53.1.0 vs 3.50.4.0; zlib1.dll resource 1.3.2 vs zlib-ng 2.2.4. Do not treat this SBOM as legal clearance. Build-only PyInstaller, hooks, and their transitive dependencies are omitted because they were not found bundled in the release tree. Windows-provided dependencies may remain external."
+          "value": "Draft/runtime SBOM from frozen distribution plus official CPython SBOM and provenance checks. The 2026-10-13 release ZIP was rebuilt with 14 notice files. It records unresolved native version/provenance differences: OpenSSL DLLs 3.5.8 vs official CPython SBOM 3.5.7; sqlite3.dll 3.53.1.0 vs 3.50.4.0; zlib1.dll resource 1.3.2 vs zlib-ng 2.2.4. Do not treat this SBOM as legal clearance. Build-only PyInstaller, hooks, and their transitive dependencies are omitted because they were not found bundled in the release tree. Windows-provided dependencies may remain external. Amendment 2026-10-21: the archive was rebuilt from the same source commit (f93a88b) after the 2026-10-13 artifact was lost with its scratch folder; the release.archive properties now record the rebuilt archive (16,702,642 bytes, SHA-256 3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c, 1,013 entries, integrity check passed, smoke test passed). The component inventory is unchanged: the rebuild used the same CPython 3.14.7 archive and Tcl/Tk MSI, whose hashes were verified at build time against docs/packaging.md. Per-DLL hashes recorded in this SBOM were measured on the 2026-10-13 tree."
         },
         {
           "name": "release.archive.size.bytes",
-          "value": "15895056"
+          "value": "16702642"
         }
       ]
     }
