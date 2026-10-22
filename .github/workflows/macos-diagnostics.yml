@@ -1,0 +1,76 @@
+name: macOS Tk isolation diagnostics
+
+on:
+  push:
+    branches:
+      - platform/macos-package
+    paths:
+      - .github/workflows/macos-diagnostics.yml
+      - scripts/macos_diagnostics.py
+      - scripts/macos_gui_diagnostic_plugin.py
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose macOS Tk test isolation
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      PYTHON_VERSION: "3.12.10"
+      VENV_PYTHON: ${{ github.workspace }}/.venv-macos-diagnostics/bin/python
+      EVIDENCE_DIR: ${{ github.workspace }}/artifacts/macos-diagnostics
+
+    steps:
+      - name: Check out diagnostic source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Record runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          arch="$(uname -m)"
+          printf 'runner_architecture=%s\n' "$arch" | tee "$EVIDENCE_DIR/runner-identity.txt"
+          [[ "$arch" == "arm64" ]] || { echo "Expected Apple silicon; found $arch" >&2; exit 1; }
+          sw_vers | tee -a "$EVIDENCE_DIR/runner-identity.txt"
+          sysctl -n machdep.cpu.brand_string | tee -a "$EVIDENCE_DIR/runner-identity.txt"
+          printf 'source_commit=%s\n' "$(git rev-parse HEAD)" | tee -a "$EVIDENCE_DIR/runner-identity.txt"
+
+      - name: Install official Python.org Python with Tk
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer_pkg="$RUNNER_TEMP/python-${PYTHON_VERSION}-macos11.pkg"
+          curl --fail --location --silent --show-error \
+            "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg" \
+            --output "$installer_pkg"
+          pkgutil --check-signature "$installer_pkg" | tee "$EVIDENCE_DIR/python-installer-signature.txt"
+          shasum -a 256 "$installer_pkg" > "$EVIDENCE_DIR/python-installer-sha256.txt"
+          sudo installer -pkg "$installer_pkg" -target /
+          rm "$installer_pkg"
+          /usr/local/bin/python3.12 -c 'import platform, tkinter; root=tkinter.Tk(); root.withdraw(); print("python_architecture=" + platform.machine()); print("tcl_version=" + str(root.tk.call("info", "patchlevel"))); print("tk_version=" + str(root.tk.call("package", "provide", "Tk"))); print("display=" + str(root.winfo_screenwidth()) + "x" + str(root.winfo_screenheight())); root.destroy(); assert platform.machine() == "arm64"' | tee "$EVIDENCE_DIR/python-tk-display.txt"
+
+      - name: Install pytest only
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/bin/python3.12 -m venv .venv-macos-diagnostics
+          "$VENV_PYTHON" -m pip install --disable-pip-version-check pytest==9.1.1
+          "$VENV_PYTHON" -m pytest --version | tee "$EVIDENCE_DIR/pytest-version.txt"
+
+      - name: Run isolated, ordered, and cleanup-control cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$VENV_PYTHON" scripts/macos_diagnostics.py --output "$EVIDENCE_DIR" --timeout 45
+
+      - name: Upload diagnostic logs, stacks, screenshots, and summaries
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Screening-Workbench-macos-Tk-diagnostics-${{ github.run_id }}
+          path: artifacts/macos-diagnostics/
+          if-no-files-found: warn
+          retention-days: 30
