@@ -247,3 +247,16 @@ the first signed release is documented as a manual reinstall for early
 adopters. Earlier "SignPath signing" entries in this report's step lists are
 superseded by this sequence. Remaining release steps: the `-final.zip`
 handoff copy and the publish call (tag, GitHub release, upload).
+
+## Closing entry — published 2026-10-21
+
+v1.0.0 was published on 2026-10-21: tag `v1.0.0` at
+`7bd3f77de012d9f9f3e5b9940bb81c63e2ff9f93`; GitHub release "Screening
+Workbench 1.0.0"
+(https://github.com/nateriera/screening-workbench/releases/tag/v1.0.0) with
+the asset `Screening-Workbench-1.0.0-windows-x64.zip` uploaded at 16,702,642
+bytes — the identity recorded in this report — with the SmartScreen note and
+SHA-256 in the release notes. Verified by read-back after publication. All
+gate items in this report are closed. Post-release, per the
+publishing-sequence addendum: SignPath Foundation application; first signed
+build v1.1 or later.
