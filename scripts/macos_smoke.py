@@ -198,8 +198,24 @@ end tell'''
         result["window_calibration"] = {
             "status": "unavailable", "reason": f"{type(exc).__name__}: {exc}", "script": ax_script,
         }
+    # On the supported macOS 15 runner, Tk reported a root origin 27 px below
+    # the Aqua window frame (x aligned). Keep this as an explicitly labeled
+    # fallback when System Events cannot expose the source process window.
+    if result["window_calibration"]["status"] != "captured":
+        ax_lookup = result["window_calibration"]
+        result["window_calibration"] = {
+            "status": "fallback",
+            "reason": "source process AX window unavailable; runner-observed macOS 15 title-bar offset used for attempt only",
+            "ax_lookup": ax_lookup,
+            "root_content_offset_from_ax_window": {"x": 0, "y": 27},
+            "window_position_from_source_tk_origin": {
+                "x": root_x, "y": root_y - 27,
+            },
+            "source_tk_root_screen_origin": {"x": root_x, "y": root_y},
+            "human_or_independent_acceptance_required": True,
+        }
     if (
-        result["window_calibration"]["status"] != "captured"
+        result["window_calibration"]["status"] not in {"captured", "fallback"}
         or first_to_attachment.get("status") != "captured"
         or attachment_to_open.get("status") != "captured"
         or not points_within_screen
@@ -300,6 +316,7 @@ def packaged_launch(app_path: Path, output: Path, evidence: dict) -> None:
         fulltext_point = calibration["fulltext_nav_content_point"]
         report_point = calibration["report_first_row_content_point"]
         content_offset = calibration["window_calibration"]["root_content_offset_from_ax_window"]
+        fallback_window_position = calibration["window_calibration"].get("window_position_from_source_tk_origin")
         item["source_calibration"] = calibration
         item["focus_to_attachment_tab_presses"] = focus_to_attachment
         item["focus_to_open_button_tab_presses"] = focus_to_open
@@ -312,6 +329,12 @@ def packaged_launch(app_path: Path, output: Path, evidence: dict) -> None:
     if focus_to_attachment < 1 or focus_to_open < 1:
         item["status"] = "failed"
         item["reason"] = "calibrated focus traversal did not reach the attachment and Open selected controls"
+        item["manual_pending"] = ["Open Full-text, select the report and attachment, and click Open selected in the packaged app."]
+        evidence["packaged_app"] = item
+        return
+    if calibration["window_calibration"]["status"] == "fallback" and not fallback_window_position:
+        item["status"] = "failed"
+        item["reason"] = "fallback source Tk window position is unavailable"
         item["manual_pending"] = ["Open Full-text, select the report and attachment, and click Open selected in the packaged app."]
         evidence["packaged_app"] = item
         return
@@ -367,6 +390,8 @@ end tell'''
     set frontmost of p to true
     delay 0.5
     set win to window 1 of p
+    {f'set position of win to {{{fallback_window_position["x"]}, {fallback_window_position["y"]}}}' if fallback_window_position else ''}
+    delay 0.3
     set wpos to position of win
     set navX to (item 1 of wpos) + {content_offset["x"]} + {fulltext_point["x"]}
     set navY to (item 2 of wpos) + {content_offset["y"]} + {fulltext_point["y"]}
