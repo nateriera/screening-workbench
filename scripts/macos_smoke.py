@@ -10,6 +10,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -65,11 +66,158 @@ def capture_screenshot(path: Path, evidence: dict) -> None:
         }
 
 
+def _widget_status(widget) -> str | None:
+    try:
+        value = widget.cget("state")
+        if isinstance(value, (tuple, list)):
+            return " ".join(map(str, value))
+        return str(value)
+    except Exception:
+        return None
+
+
+def _focus_steps(start, target, limit: int = 200) -> dict:
+    """Count enabled, viewable Tk focus-traversal steps between widgets."""
+    current = start
+    visited = {str(start)}
+    path = []
+    steps = 0
+    for _ in range(limit):
+        try:
+            candidate = current.tk_focusNext()
+        except Exception as exc:
+            return {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}", "widgets": path}
+        if candidate is None or str(candidate) in visited:
+            break
+        visited.add(str(candidate))
+        try:
+            viewable = bool(candidate.winfo_viewable())
+        except Exception:
+            viewable = False
+        state = _widget_status(candidate)
+        enabled = state != "disabled" and "disabled" not in (state or "").split()
+        path.append({
+            "widget": str(candidate),
+            "class": candidate.winfo_class(),
+            "viewable": viewable,
+            "state": state,
+            "focus_step": steps + (1 if viewable and enabled else 0),
+        })
+        if viewable and enabled:
+            steps += 1
+            if candidate == target:
+                return {"status": "captured", "tab_presses": steps, "widgets": path}
+        current = candidate
+    return {"status": "target_not_reached", "tab_presses": steps, "widgets": path}
+
+
+def capture_packaged_ui_calibration(root, app) -> dict:
+    """Capture source Tk content-relative click points and focus traversal."""
+    root.update_idletasks()
+    root_x, root_y = root.winfo_rootx(), root.winfo_rooty()
+    nav = app.section_nav_buttons["fulltext"]
+    report = app.report_list
+    attachment = app.attachment_listbox
+    open_button = app.open_attachment_btn
+    nav_point = (
+        nav.winfo_rootx() - root_x + nav.winfo_width() / 2,
+        nav.winfo_rooty() - root_y + nav.winfo_height() / 2,
+    )
+    report_point = (
+        report.winfo_rootx() - root_x + min(20, max(8, report.winfo_width() / 4)),
+        report.winfo_rooty() - root_y + min(10, max(5, report.winfo_height() / 16)),
+    )
+    first_to_attachment = _focus_steps(report, attachment)
+    attachment_to_open = _focus_steps(attachment, open_button)
+    fulltext_screen_point = (root_x + nav_point[0], root_y + nav_point[1])
+    report_screen_point = (root_x + report_point[0], root_y + report_point[1])
+    screen_width, screen_height = root.winfo_screenwidth(), root.winfo_screenheight()
+    points_within_screen = all(
+        0 <= point[0] < screen_width and 0 <= point[1] < screen_height
+        for point in (fulltext_screen_point, report_screen_point)
+    )
+    result = {
+        "status": "captured",
+        "screen": {"width": screen_width, "height": screen_height},
+        "tk_root_screen_origin": {"x": root_x, "y": root_y},
+        "fulltext_nav_content_point": {"x": round(nav_point[0]), "y": round(nav_point[1])},
+        "report_first_row_content_point": {"x": round(report_point[0]), "y": round(report_point[1])},
+        "fulltext_nav_screen_point": {"x": round(fulltext_screen_point[0]), "y": round(fulltext_screen_point[1])},
+        "report_first_row_screen_point": {"x": round(report_screen_point[0]), "y": round(report_screen_point[1])},
+        "click_points_within_screen": points_within_screen,
+        "report_list": {
+            "viewable": bool(report.winfo_viewable()),
+            "size": {"width": report.winfo_width(), "height": report.winfo_height()},
+        },
+        "attachment_listbox": {
+            "viewable": bool(attachment.winfo_viewable()),
+            "state": _widget_status(attachment),
+        },
+        "open_attachment_button": {
+            "viewable": bool(open_button.winfo_viewable()),
+            "state": _widget_status(open_button),
+        },
+        "focus_report_to_attachment": first_to_attachment,
+        "focus_attachment_to_open_button": attachment_to_open,
+    }
+    if sys.platform != "darwin":
+        result["window_calibration"] = {"status": "unavailable", "reason": "System Events is macOS-only"}
+        result["status"] = "incomplete"
+        return result
+    ax_script = f'''tell application "System Events"
+    set p to first process whose unix id is {os.getpid()}
+    set frontmost of p to true
+    set w to window 1 of p
+    set ppos to position of w
+    set wsz to size of w
+    return ((item 1 of ppos) as text) & tab & ((item 2 of ppos) as text) & tab & ((item 1 of wsz) as text) & tab & ((item 2 of wsz) as text)
+end tell'''
+    try:
+        result_ax = subprocess.run(
+            ["osascript", "-e", ax_script], capture_output=True, text=True, check=False, timeout=5,
+        )
+        coords = [int(v) for v in re.findall(r"-?\d+", result_ax.stdout)]
+        if result_ax.returncode == 0 and len(coords) >= 4:
+            ax_x, ax_y, width, height = coords[:4]
+            result["window_calibration"] = {
+                "status": "captured",
+                "ax_window_position": {"x": ax_x, "y": ax_y},
+                "ax_window_size": {"width": width, "height": height},
+                "root_content_offset_from_ax_window": {"x": root_x - ax_x, "y": root_y - ax_y},
+                "script": ax_script,
+            }
+        else:
+            result["window_calibration"] = {
+                "status": "unavailable",
+                "returncode": result_ax.returncode,
+                "stdout": result_ax.stdout.strip(),
+                "stderr": result_ax.stderr.strip(),
+                "script": ax_script,
+            }
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        result["window_calibration"] = {
+            "status": "unavailable", "reason": f"{type(exc).__name__}: {exc}", "script": ax_script,
+        }
+    if (
+        result["window_calibration"]["status"] != "captured"
+        or first_to_attachment.get("status") != "captured"
+        or attachment_to_open.get("status") != "captured"
+        or not points_within_screen
+        or not result["report_list"]["viewable"]
+        or not result["attachment_listbox"]["viewable"]
+        or result["attachment_listbox"]["state"] == "disabled"
+        or not result["open_attachment_button"]["viewable"]
+        or result["open_attachment_button"]["state"] == "disabled"
+    ):
+        result["status"] = "incomplete"
+    return result
+
+
 def packaged_launch(app_path: Path, output: Path, evidence: dict) -> None:
     """Seed and launch a .app, then best-effort click Open selected by AppleScript."""
     item: dict = {
         "path": str(app_path),
-        "scope": "synthetic packaged launch plus AppleScript attempt to invoke Full-text > Open selected",
+        "scope": "synthetic packaged launch plus calibrated mouse and keyboard attempt to invoke Open selected",
         "workflow_acceptance": "pending packaged UI attempt",
         "human_visual_acceptance": "not assessed",
     }
@@ -138,6 +286,35 @@ def packaged_launch(app_path: Path, output: Path, evidence: dict) -> None:
     item["executable"] = str(executable)
     item["isolated_home"] = str(isolated_home)
     item["reviewer_id"] = env["SCREENING_WORKBENCH_REVIEWER_ID"]
+    calibration = source_app.get("packaged_ui_calibration", {})
+    if calibration.get("status") != "captured":
+        item["status"] = "failed"
+        item["reason"] = "source Tk geometry or focus-chain calibration is incomplete"
+        item["source_calibration"] = calibration
+        item["manual_pending"] = ["Open Full-text, select the report and attachment, and click Open selected in the packaged app."]
+        evidence["packaged_app"] = item
+        return
+    try:
+        focus_to_attachment = calibration["focus_report_to_attachment"]["tab_presses"]
+        focus_to_open = calibration["focus_attachment_to_open_button"]["tab_presses"]
+        fulltext_point = calibration["fulltext_nav_content_point"]
+        report_point = calibration["report_first_row_content_point"]
+        content_offset = calibration["window_calibration"]["root_content_offset_from_ax_window"]
+        item["source_calibration"] = calibration
+        item["focus_to_attachment_tab_presses"] = focus_to_attachment
+        item["focus_to_open_button_tab_presses"] = focus_to_open
+    except (KeyError, TypeError) as exc:
+        item["status"] = "failed"
+        item["reason"] = f"source UI calibration is incomplete: {type(exc).__name__}: {exc}"
+        item["manual_pending"] = ["Open Full-text, select the report and attachment, and click Open selected in the packaged app."]
+        evidence["packaged_app"] = item
+        return
+    if focus_to_attachment < 1 or focus_to_open < 1:
+        item["status"] = "failed"
+        item["reason"] = "calibrated focus traversal did not reach the attachment and Open selected controls"
+        item["manual_pending"] = ["Open Full-text, select the report and attachment, and click Open selected in the packaged app."]
+        evidence["packaged_app"] = item
+        return
     stdout_path = output / "packaged-app.stdout.log"
     stderr_path = output / "packaged-app.stderr.log"
     stdout_file = stdout_path.open("wb")
@@ -152,8 +329,6 @@ def packaged_launch(app_path: Path, output: Path, evidence: dict) -> None:
         time.sleep(3)
         item["returncode_before_cleanup"] = proc.poll()
         if proc.poll() is None:
-            screenshot = output / "packaged-app.png"
-            capture_screenshot(screenshot, item)
             inventory_script = f'''tell application "System Events"
     set p to first process whose unix id is {proc.pid}
     set frontmost of p to true
@@ -184,31 +359,31 @@ end tell'''
                     "status": "unavailable", "reason": f"{type(exc).__name__}: {exc}",
                     "script": inventory_script,
                 }
-            # Use the app's View menu, then best-effort accessibility clicks
-            # on the one synthetic report, its one PDF, and Open selected.
+            capture_screenshot(output / "packaged-app.png", item)
+            # Tk exposes Aqua window chrome but not its child controls to
+            # System Events. Use source-calibrated clicks and focus traversal.
             ui_script = f'''tell application "System Events"
     set p to first process whose unix id is {proc.pid}
     set frontmost of p to true
     delay 0.5
-    tell menu bar 1 of p
-        click menu bar item "View"
-        delay 0.2
-        click menu item "Full-text" of menu 1 of menu bar item "View"
-    end tell
-    delay 1
     set win to window 1 of p
-    set reportAndAttachmentLists to every list box of win
-    if (count of reportAndAttachmentLists) < 3 then error "Expected promote, report, and attachment list boxes; found " & (count of reportAndAttachmentLists)
-    set reportList to item 2 of reportAndAttachmentLists
-    set xy to position of reportList
-    click at {{(item 1 of xy) + 20, (item 2 of xy) + 10}}
+    set wpos to position of win
+    set navX to (item 1 of wpos) + {content_offset["x"]} + {fulltext_point["x"]}
+    set navY to (item 2 of wpos) + {content_offset["y"]} + {fulltext_point["y"]}
+    set reportX to (item 1 of wpos) + {content_offset["x"]} + {report_point["x"]}
+    set reportY to (item 2 of wpos) + {content_offset["y"]} + {report_point["y"]}
+    click at {{navX, navY}}
     delay 0.5
-    set reportAndAttachmentLists to every list box of win
-    set attachmentList to item 3 of reportAndAttachmentLists
-    set xy to position of attachmentList
-    click at {{(item 1 of xy) + 20, (item 2 of xy) + 8}}
-    delay 0.2
-    click button "Open selected" of win
+    click at {{reportX, reportY}}
+    delay 0.5
+    repeat {focus_to_attachment} times
+        key code 48
+    end repeat
+    key code 125
+    repeat {focus_to_open} times
+        key code 48
+    end repeat
+    key code 49
     return "OPEN_SELECTED_CLICKED"
 end tell'''
             temp_root = Path(tempfile.gettempdir())
@@ -546,6 +721,11 @@ def run_source_smoke(output: Path, evidence: dict) -> bool:
             raise RuntimeError("PDF attachment callback produced no attachment")
         app.attachment_listbox.selection_set(0)
         app.attachment_listbox.activate(0)
+        root.update()
+        details["packaged_ui_calibration"] = capture_packaged_ui_calibration(root, app)
+        calibration_screenshot: dict = {}
+        capture_screenshot(output / "source-fulltext-calibration.png", calibration_screenshot)
+        details["packaged_ui_calibration"]["screenshot"] = calibration_screenshot.get("screenshot")
         app._open_selected_attachment()
         root.update()
         details["callbacks"].append({
@@ -617,8 +797,8 @@ def main() -> int:
         "overall_status": "running",
         "limitations": [
             "Tk callbacks run in an automated smoke; human visual acceptance is not implied.",
-            "The optional packaged-app path seeds isolated synthetic data and attempts the Full-text > Open selected UI action with AppleScript; the source callbacks are not re-imported from the packaged bundle.",
-            "A successful packaged AppleScript click is UI-action evidence, not human visual acceptance of the PDF rendering.",
+            "The optional packaged-app path seeds isolated synthetic data and uses source-calibrated mouse and keyboard input; it does not re-import source callbacks from the packaged bundle.",
+            "A successful packaged Open selected action plus temp PDF and Preview process evidence is not human visual acceptance of the rendered PDF.",
         ],
     }
     source_ok = run_source_smoke(output, evidence)

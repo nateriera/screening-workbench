@@ -64,6 +64,17 @@ jobs:
           "$VENV_PYTHON" -m pip install --disable-pip-version-check pytest pyinstaller==6.21.0
           mkdir -p "$EVIDENCE_DIR" "$BUILD_ROOT/spec" "$BUILD_ROOT/work" "$BUILD_ROOT/dist" artifacts
 
+      - name: Run focused platform regression tests
+        id: platform_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$VENV_PYTHON" scripts/macos_run_tests.py \
+            --output "$EVIDENCE_DIR/platform-tests" \
+            --timeout 120 \
+            --test-path tests/test_platform.py
+
       - name: Run the complete test suite, including GUI tests
         id: tests
         continue-on-error: true
@@ -148,6 +159,7 @@ jobs:
         shell: bash
         env:
           TEST_OUTCOME: ${{ steps.tests.outcome }}
+          PLATFORM_TEST_OUTCOME: ${{ steps.platform_tests.outcome }}
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
           PACKAGE_OUTCOME: ${{ steps.package.outcome }}
         run: |
@@ -158,6 +170,10 @@ jobs:
           fi
           if [[ "$SMOKE_OUTCOME" != "success" ]]; then
             echo "Source or packaged-app smoke failed; candidate artifact was retained for inspection." >&2
+            exit 1
+          fi
+          if [[ "$PLATFORM_TEST_OUTCOME" != "success" ]]; then
+            echo "Focused platform regression tests failed; candidate artifact was retained for inspection." >&2
             exit 1
           fi
           "$VENV_PYTHON" -c 'import json,sys; data=json.load(open(sys.argv[1],encoding="utf-8")); assert data.get("source_app",{}).get("status")=="passed", "source smoke did not pass"; assert data.get("packaged_app",{}).get("status")=="passed", "packaged open-action smoke did not pass"' "$EVIDENCE_DIR/smoke/evidence.json"
