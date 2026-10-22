@@ -210,3 +210,28 @@ by construction (same pinned, hash-verified sources). The per-DLL hashes in
 identity. Remaining owner steps are unchanged: the `-final.zip` handoff copy,
 the Visual Studio entitlement attestation, SignPath signing, and the publish
 call.
+
+## Addendum — 2026-10-21 entitlement attestation (gate item 3 closed)
+
+On 2026-10-21 the publisher recorded the following attestation:
+
+> I, Nate Riera, attest on October 21, 2026: Screening Workbench 1.0.0
+> redistributes Microsoft runtime files under the Visual Studio 2022 Community
+> license held for the build machine. The redistributed CRT files
+> (VCRUNTIME140.dll and VCRUNTIME140_1.dll, version 14.44.35211.0) appear on
+> Microsoft's Visual Studio 2022 redistribution list and are included
+> unmodified; the Universal CRT files are covered by the Windows SDK
+> redistribution list. I am the licensee and the publisher, and this use is
+> within the Visual Studio Community license terms.
+
+License evidence: Microsoft Visual Studio Community 2022, version 17.14.36
+(VisualStudio.17.Release/17.14.36+37502.11), with the Microsoft Visual C++
+2022 component installed — About information supplied by the publisher on
+2026-10-21. The first About supplied was Visual Studio Code 1.142.0, a
+different product that carries no redistribution entitlement; the Visual
+Studio About followed and confirmed the installation.
+
+With the documentary basis (item 3), the API-set enumeration (rebuild
+addendum), and this attestation, gate item 3 is closed in full. Remaining
+release steps: the `-final.zip` handoff copy, SignPath signing, and the
+publish call.
