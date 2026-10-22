@@ -18,12 +18,17 @@ jobs:
       CANDIDATE_LABEL: "1.1.0"
       VENV_PYTHON: ${{ github.workspace }}/.venv-macos/bin/python
       EVIDENCE_DIR: ${{ github.workspace }}/artifacts/evidence
-      BUILD_ROOT: ${{ runner.temp }}/screening-workbench-macos
       PACKAGE_ZIP: ${{ github.workspace }}/artifacts/Screening-Workbench-1.1.0-macos-arm64.zip
 
     steps:
       - name: Check out source
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Initialize runner-local build directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BUILD_ROOT=$RUNNER_TEMP/screening-workbench-macos" >> "$GITHUB_ENV"
 
       - name: Confirm Apple silicon runner
         shell: bash
