@@ -39,7 +39,7 @@ python -m pytest tests/ -q          # run the test suite (pytest is the only dev
 - **Blind-review integrity is a correctness boundary**, as are audit
   sequencing and PRISMA count reconciliation. Changes touching them
   need tests demonstrating the boundary holds.
-- **Design.** UI work follows the Field Notes system in
+- **Design.** UI work follows the Card Catalogue visual direction (direction 02) in
   `docs/design-system.md`, including its accessibility gates.
 
 ## Pull requests

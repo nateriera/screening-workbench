@@ -426,18 +426,36 @@ def test_undo_last_vote_with_nothing_to_undo_returns_none(tmp_path):
     conn.close()
 
 
-def test_undo_last_vote_numbers_are_stable_and_real(tmp_path):
-    """UI reference target §11: '#N' per recent decision must be a real,
-    stable number (screen_votes' implicit rowid), not decorative text."""
+def test_undo_last_vote_numbers_are_stable_and_real(tmp_path, monkeypatch):
+    """Tied timestamps use insertion order, matching undo's rowid order."""
     conn, occ_ids = _setup_two(tmp_path)
-    screening.cast_vote(conn, occurrence_id=occ_ids[0], reviewer_id="revA", decision="include")
-    screening.cast_vote(conn, occurrence_id=occ_ids[1], reviewer_id="revA", decision="maybe")
+    monkeypatch.setattr(db, "now_rfc3339", lambda: "2026-01-01T00:00:00.000000Z")
+    vote_ids = iter((
+        "vote_f0000000000000000000000000000000",
+        "vote_0000000000000000000000000000001",
+    ))
+    monkeypatch.setattr(screening, "new_id", lambda prefix: next(vote_ids))
+    first_vote_id = screening.cast_vote(
+        conn, occurrence_id=occ_ids[0], reviewer_id="revA", decision="include",
+    )
+    second_vote_id = screening.cast_vote(
+        conn, occurrence_id=occ_ids[1], reviewer_id="revA", decision="maybe",
+    )
 
+    rowids = {
+        row["vote_id"]: row["n"]
+        for row in conn.execute("SELECT rowid AS n, vote_id FROM screen_votes WHERE reviewer_id='revA'")
+    }
     recent = screening.recent_decisions_for_reviewer(conn, "revA")
-    assert recent[0]["number"] > recent[1]["number"]  # newest first, strictly increasing
+    assert recent[0]["number"] == rowids[second_vote_id]
+    assert recent[0]["decision"] == "maybe"
+    assert recent[1]["number"] == rowids[first_vote_id]
 
     undone = screening.undo_last_vote(conn, "revA")
     assert undone["n"] == recent[0]["number"]
+    assert undone["vote_id"] == second_vote_id
+    assert screening.current_vote(conn, occ_ids[0], "revA")["decision"] == "include"
+    assert screening.current_vote(conn, occ_ids[1], "revA") is None
     conn.close()
 
 

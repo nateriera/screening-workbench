@@ -1,6 +1,7 @@
 import json
 import os
 import tkinter as tk
+from types import SimpleNamespace
 from unittest.mock import patch
 from tkinter import ttk
 
@@ -60,7 +61,7 @@ def test_global_theme_applies_field_notes_colors_and_font_fallbacks(tmp_path):
     assert theme.resolve_font(root, theme.FONT_READING) in str(app.title_label.cget("font"))
     assert app.abstract_text.cget("background") == theme.TOKENS["surface"]
     assert app.abstract_text.cget("foreground") == theme.TOKENS["ink"]
-    assert app.blind_chip_label.cget("background") == theme.TOKENS["maybe_soft"]
+    assert app.blind_chip_label.cget("background") == theme.TOKENS["drawer"]
     assert theme.contrast_ratio(
         app.blind_chip_label.cget("foreground"), app.blind_chip_label.cget("background"),
     ) >= 4.5
@@ -69,9 +70,9 @@ def test_global_theme_applies_field_notes_colors_and_font_fallbacks(tmp_path):
     assert "clam" in style.theme_names()  # no third-party toolkit/theme
     assert style.lookup("Header.TFrame", "padding") == "16 8"
     assert "padding" in theme.SPACING
-    assert theme.resolve_font(root, theme.FONT_UI) == "Segoe UI"
-    assert theme.resolve_font(root, theme.FONT_READING) == "Palatino Linotype"
-    assert theme.resolve_font(root, theme.FONT_MONO) == "Cascadia Code"
+    assert theme.resolve_font(root, theme.FONT_UI) == "Atkinson Hyperlegible Next"
+    assert theme.resolve_font(root, theme.FONT_READING) == "Newsreader 16pt"
+    assert theme.resolve_font(root, theme.FONT_MONO) == "Atkinson Hyperlegible Mono"
     fallback_root = tk.Tk()
     fallback_root.withdraw()
     fallback_root.tk.call("font", "families")
@@ -82,41 +83,29 @@ def test_global_theme_applies_field_notes_colors_and_font_fallbacks(tmp_path):
     root.destroy()
 
 
-def test_field_notes_theme_tokens_contrast_and_size_contract():
+def test_card_catalogue_theme_tokens_contrast_and_size_contract():
     from screening_workbench import theme
 
     expected = {
-        "canvas": "#f5f6f2", "surface": "#ffffff", "surface_raised": "#fbfcf9",
-        "ink": "#1f2a25", "muted": "#66736b", "line": "#dce3dc",
+        "drawer": "#1d3a32", "drawer_raised": "#28493f", "drawer_ink": "#f2f0e6", "drawer_muted": "#a9bfb4",
+        "signal": "#e8d44d", "signal_soft": "#f7efb5",
+        "canvas": "#dce2d9", "surface": "#fffefa", "surface_raised": "#fbfcf9",
+        "ink": "#1f2a25", "muted": "#55625a", "line": "#cbd5cb",
         "line_strong": "#bdc9bf", "accent": "#23634d", "accent_hover": "#1c513f",
         "accent_soft": "#e7f0eb", "accent_focus": "#174b39", "include": "#276149", "maybe": "#80540f",
         "exclude": "#a4443e", "info": "#3d6476", "focus": "#c45a32",
         "include_soft": "#e8f1ec", "maybe_soft": "#f6eedf", "exclude_soft": "#f7e8e6",
         "info_soft": "#e6eef1",
+        "include_border": "#a9c8b6", "maybe_border": "#dcc39a", "exclude_border": "#dfb0ab",
+        "grid_minor": "#eef1ea", "grid_major": "#dfe5dc",
+        "on_signal": "#1f2a25", "inverse_bg": "#fffefa", "inverse_fg": "#1d3a32", "rule_ink": "#1d3a32",
+        "control": "#dcdad5", "control_light": "#eeebe7", "control_dark": "#cfcdc8",
+        "control_border": "#9e9a91", "trough": "#bab5ab",
     }
-    assert theme.TOKENS == expected
+    assert theme.TOKENS == expected == theme.PALETTES["light"]
     assert theme.SPACING["base"] == 8
     assert theme.RADII == {"control": 6, "card": 10, "dialog": 14}
     assert theme.CONTROL_MIN_HEIGHT == 40
-
-
-def test_all_text_contrast_pairs_are_computed_from_tokens():
-    from screening_workbench import theme
-
-    pairs = {
-        "ink.canvas": ("ink", "canvas"), "ink.surface": ("ink", "surface"),
-        "ink.surface_raised": ("ink", "surface_raised"),
-        "muted.canvas": ("muted", "canvas"), "muted.surface": ("muted", "surface"),
-        "muted.surface_raised": ("muted", "surface_raised"),
-        "accent.surface": ("accent", "surface"), "accent.accent_soft": ("accent", "accent_soft"),
-        "include.include_soft": ("include", "include_soft"), "maybe.maybe_soft": ("maybe", "maybe_soft"),
-        "exclude.exclude_soft": ("exclude", "exclude_soft"), "info.info_soft": ("info", "info_soft"),
-    }
-    assert theme.TEXT_CONTRAST_PAIRS == {
-        name: theme.contrast_ratio(theme.TOKENS[foreground], theme.TOKENS[background])
-        for name, (foreground, background) in pairs.items()
-    }
-    assert all(ratio >= 4.5 for ratio in theme.TEXT_CONTRAST_PAIRS.values())
 
 
 @requires_tk
@@ -138,24 +127,18 @@ def test_theme_module_owns_ttk_styles_and_classic_canvas_options(tmp_path):
 
 
 @requires_tk
-def test_theme_preserves_real_focus_outline_distinct_from_selection(tmp_path):
+def test_theme_focus_outline_is_tokenized_and_distinct_from_selection(tmp_path):
     from screening_workbench import theme
 
     root = tk.Tk()
-    root.geometry("400x240")
+    root.withdraw()
     theme.apply_theme(root)
     frame = tk.Frame(root, background=theme.TOKENS["surface"], **theme.focus_outline_options(False))
-    frame.pack(fill="both", expand=True)
     tree = ttk.Treeview(frame, show="tree", height=3)
-    tree.pack(fill="both", expand=True)
     tree.insert("", "end", iid="sample", text="Selected sample")
     tree.selection_set("sample")
-    root.update()
 
-    tree.focus_force()
-    root.update()
     frame.configure(**theme.focus_outline_options(True))
-    root.update()
     assert int(frame.cget("highlightthickness")) == 3
     assert str(frame.cget("highlightbackground")) == theme.TOKENS["focus"]
     assert tree.selection() == ("sample",)
@@ -183,9 +166,25 @@ def test_all_text_contrast_pairs_are_computed_from_tokens():
         "exclude.exclude_soft": ("exclude", "exclude_soft"),
         "info.info_soft": ("info", "info_soft"),
         "surface.accent_focus": ("surface", "accent_focus"),
+        "surface.accent": ("surface", "accent"),
+        "drawer_ink.drawer": ("drawer_ink", "drawer"),
+        "drawer_muted.drawer": ("drawer_muted", "drawer"),
+        "drawer_ink.drawer_raised": ("drawer_ink", "drawer_raised"),
+        "drawer_muted.drawer_raised": ("drawer_muted", "drawer_raised"),
+        "inverse_fg.inverse_bg": ("inverse_fg", "inverse_bg"),
+        "on_signal.signal": ("on_signal", "signal"),
+        "ink.signal_soft": ("ink", "signal_soft"),
+        "include.surface": ("include", "surface"),
+        "maybe.surface": ("maybe", "surface"),
+        "exclude.surface": ("exclude", "surface"),
+        "info.surface": ("info", "surface"),
+        "ink.control": ("ink", "control"),
+        "ink.accent_soft": ("ink", "accent_soft"),
+        "ink.exclude_soft": ("ink", "exclude_soft"),
     }
+    light = theme.PALETTES["light"]
     assert theme.TEXT_CONTRAST_PAIRS == {
-        name: theme.contrast_ratio(theme.TOKENS[fg], theme.TOKENS[bg])
+        name: theme.contrast_ratio(light[fg], light[bg])
         for name, (fg, bg) in pairs.items()
     }
     assert all(ratio >= 4.5 for ratio in theme.TEXT_CONTRAST_PAIRS.values())
@@ -481,8 +480,8 @@ def test_phase2_duplicates_tab_uses_three_card_shell_preserving_controls(tmp_pat
     assert app.dup_queue_card.winfo_width() >= 250
     assert app.dup_compare_card.winfo_width() >= 650
     assert app.dup_resolution_card.winfo_width() >= 290
-    assert app.dup_compare_text.cget("wrap") == "none"
-    assert app.dup_compare_xscroll.winfo_manager() == "pack"
+    assert app.dup_compare_text.cget("wrap") == "word"
+    assert not hasattr(app, "dup_compare_xscroll")
     assert app.dup_list.size() == 1
     assert app.dup_list.get(0) == "No open duplicate candidates."
     assert str(app.dup_merge_button.cget("state")) == "disabled"
@@ -693,33 +692,31 @@ def test_duplicates_keyboard_traverses_queue_and_survivor_with_visible_focus(tmp
     app.dup_list.selection_set(0)
     app._render_dup_cluster()
     assert app.dup_survivor_list.size() == 2
-    app.dup_list.focus_force()
-    root.update()
-    app.dup_list.event_generate("<Down>")
-    root.update()
-    assert app.dup_list.curselection() == (1,)
-    assert app.dup_survivor_list.size() == 2
-    app.dup_list.event_generate("<Up>")
-    root.update()
-    assert app.dup_list.curselection() == (0,)
-    app.dup_list.focus_force()
-    root.update()
-    assert app.dup_keyboard_help_label.cget("text") == "Keyboard: Tab through queue, survivor, actions; Up/Down selects"
-    assert root.focus_get() is app.dup_list
+    app.dup_list.event_generate("<FocusIn>", when="now")
     assert app.dup_list.cget("highlightthickness") == 3
     assert app.dup_list.cget("highlightbackground") == TOKENS["focus"]
     assert app.dup_list.cget("highlightcolor") == TOKENS["focus"]
     assert app.dup_list.cget("selectbackground") == TOKENS["accent_soft"]
+    assert app._dup_move_selection(1) == "break"
+    assert app.dup_list.curselection() == (1,)
+    assert app.dup_survivor_list.size() == 2
+    assert app._dup_move_selection(-1) == "break"
+    assert app.dup_list.curselection() == (0,)
+    app.dup_list.event_generate("<FocusOut>", when="now")
+    assert app.dup_list.cget("highlightbackground") == TOKENS["line"]
+    assert app.dup_keyboard_help_label.cget("text") == "Keyboard: Tab through queue, survivor, actions; Up/Down selects"
 
     actual_focus_chain = []
-    for _ in range(6):
-        root.event_generate("<Tab>")
-        root.update()
-        actual_focus_chain.append(root.focus_get())
+    widget = app.dup_list
+    for _ in range(24):
+        widget = widget.tk_focusNext()
+        actual_focus_chain.append(widget)
+        if widget is app.dup_list:
+            break
     assert app.dup_survivor_list in actual_focus_chain
     assert app.dup_merge_button in actual_focus_chain
     assert app.dup_keep_separate_button in actual_focus_chain
-    assert actual_focus_chain[-1] is not None
+    assert actual_focus_chain[-1] is app.dup_list
     root.destroy()
 
 
@@ -788,6 +785,7 @@ def test_duplicates_tab_compare_pane_shows_field_table_and_provenance(tmp_path):
     assert "Difference" in text
     assert "Authors" in text and "Year" in text  # non-differing fields still shown
     # item 5: score, reasons, rule version, and provenance are all present.
+    assert "row row 2" not in text.casefold()
     assert "Score 0.95" in text
     assert "title similarity" in text
     assert "shared publication year" in text
@@ -942,16 +940,11 @@ def test_conflicts_queue_arrows_move_between_two_open_conflicts_and_render_detai
     app.refresh_all_tabs()
     assert len(app._conflict_occurrence_ids) == 2
     app.notebook.select(3)
-    root.deiconify()
-    root.update()
     app.conflict_list.selection_set(0)
-    app.conflict_list.focus_force()
-    root.update()
 
     first_occurrence_id = app._conflict_occurrence_ids[0]
     first_title = app._load_fields(first_occurrence_id)["title"]
-    app.conflict_list.event_generate("<Down>")
-    root.update()
+    assert app._move_conflict_selection(1) == "break"
     assert app.conflict_list.curselection() == (1,)
     second_occurrence_id = app._conflict_occurrence_ids[1]
     second_title = app._load_fields(second_occurrence_id)["title"]
@@ -961,8 +954,7 @@ def test_conflicts_queue_arrows_move_between_two_open_conflicts_and_render_detai
     assert second_occurrence_id in second
     assert "reviewer-a: include" in second
     assert "Focused conflict 2 of 2." == app.status_message_label.cget("text")
-    app.conflict_list.event_generate("<Up>")
-    root.update()
+    assert app._move_conflict_selection(-1) == "break"
     assert app.conflict_list.curselection() == (0,)
     first = app.conflict_detail_text.get("1.0", "end")
     assert first_title in first
@@ -1537,6 +1529,28 @@ def test_fulltext_reason_choice_is_cleared_when_selecting_another_report(tmp_pat
 
 
 @requires_tk
+def test_fulltext_reason_choice_survives_same_report_rerender(tmp_path):
+    from screening_workbench import reports, screening
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "fulltext-same-report-rerender.sqlite"), reviewer_id="owner")
+    occ_ids = _seed_two_occurrences(app, "Synthetic same report reason", "Synthetic same report control")
+    screening.cast_vote(app.conn, occurrence_id=occ_ids[0], reviewer_id="owner", decision="include")
+    report_id = reports.promote_occurrence_to_report(app.conn, "owner", occ_ids[0])
+    app.refresh_all_tabs()
+    app.report_list.selection_set(app._report_ids.index(report_id))
+    app._render_fulltext_detail()
+
+    reason = screening.EXCLUSION_REASONS[0]
+    app.fulltext_reason_var.set(reason)
+    app._render_fulltext_detail()
+
+    assert app.fulltext_reason_var.get() == reason
+    root.destroy()
+
+
+@requires_tk
 def test_phase4_fulltext_exclusion_note_keeps_full_height_above_pdf_actions(tmp_path):
     from screening_workbench import reports, screening
 
@@ -1729,8 +1743,6 @@ def test_fulltext_queue_keyboard_focus_and_arrow_navigation_are_visible(tmp_path
     from screening_workbench import reports, screening
 
     root = tk.Tk()
-    root.geometry("1280x800")
-    root.update_idletasks()
     app = ScreeningWorkbenchApp(root, str(tmp_path / "fulltext-queue-keyboard.sqlite"), reviewer_id="owner")
     occurrence_ids = _seed_two_occurrences(app, "Synthetic queue keyboard first", "Synthetic queue keyboard second")
     report_ids = []
@@ -1741,13 +1753,10 @@ def test_fulltext_queue_keyboard_focus_and_arrow_navigation_are_visible(tmp_path
     app.notebook.select(4)
     root.deiconify()
     root.update()
-    app.report_list.focus_force()
-    root.update()
-    assert app.report_list.focus_get() == app.report_list
+    app.report_list.event_generate("<FocusIn>", when="now")
     assert app.report_list.cget("highlightthickness") == 3
     assert app.report_list.cget("highlightbackground") == TOKENS["focus"]
-    app.report_list.event_generate("<Down>")
-    root.update()
+    assert app._move_fulltext_report(1) == "break"
     assert app.report_list.curselection() == (1,)
     expected_id = app._report_ids[1]
     assert expected_id in app.fulltext_detail_text.get("1.0", "end")
@@ -2537,7 +2546,7 @@ def test_queue_row_metadata_uses_muted_hierarchy_and_current_row_label(tmp_path)
     assert app.queue_list.cget("yscrollcommand")
     assert app.queue_list.master.cget("height") == 280
     assert app.include_button.cget("text") == "I  Include"
-    assert app.maybe_button.cget("text") == "M  ? Maybe"
+    assert app.maybe_button.cget("text") == "M  Maybe"
     assert app.exclude_button.cget("text") == "E  Exclude..."
     assert app.queue_list.winfo_manager() == "pack"
     root.destroy()
@@ -2592,24 +2601,20 @@ def test_typing_i_m_e_in_search_field_does_not_cast_a_vote(tmp_path):
     app.refresh_all_tabs()
     occ_id = app.current_occurrence_id
 
-    # focus_get() needs a real, viewable toplevel to track Tk-internal
-    # focus reliably -- deiconify for this test only.
-    root.deiconify()
-    root.focus_force()
-    root.update()
-
-    app.screen_search_entry.focus_set()
-    app.screen_search_entry.insert(0, "i")
-    app.screen_search_entry.event_generate("<Key-i>")
-    root.update()
-
+    # A key typed into an entry reaches the toplevel binding with that entry
+    # as event.widget (Tk bindtags). Call those handlers with the delivered
+    # widget, so the check never depends on Windows granting OS focus.
+    for seq in ("<Key-i>", "<Key-m>", "<Key-e>", "<Key-j>", "<Key-k>", "<Key-slash>"):
+        assert root.bind(seq), f"{seq} is not bound on the toplevel"
+    for field in (app.screen_search_entry, app.screen_year_entry, app.screen_journal_entry):
+        for seq in ("<Key-i>", "<Key-m>", "<Key-e>", "<Key-j>", "<Key-k>"):
+            assert app._shortcut_handlers[seq](SimpleNamespace(widget=field)) is None
     assert screening.current_vote(app.conn, occ_id, "owner") is None
+    assert app.current_occurrence_id == occ_id
 
     # The focus ring target (abstract_text) is the one place these
     # shortcuts must still work, even though it's a tk.Text widget.
-    app.abstract_text.focus_set()
-    app.abstract_text.event_generate("<Key-i>")
-    root.update()
+    app._shortcut_handlers["<Key-i>"](SimpleNamespace(widget=app.abstract_text))
     vote = screening.current_vote(app.conn, occ_id, "owner")
     assert vote is not None and vote["decision"] == "include"
     root.destroy()
@@ -2624,23 +2629,20 @@ def test_slash_focuses_search_unless_already_typing(tmp_path):
     root.withdraw()
     app = ScreeningWorkbenchApp(root, str(tmp_path / "proj.sqlite"), reviewer_id="owner")
 
-    # focus_get() needs a real, viewable toplevel with actual OS input
-    # focus to track Tk-internal focus reliably -- deiconify + force
-    # focus for this test only.
-    root.deiconify()
-    root.focus_force()
-    root.update()
+    # Without OS focus Tk ignores focus_set(), so record the request the
+    # handler makes instead of reading focus back.
+    requests = []
+    app.screen_search_entry.focus_set = lambda: requests.append("search")
 
-    app.abstract_text.focus_set()
-    root.update()
-    app.abstract_text.event_generate("<Key-slash>")
-    root.update()
-    assert root.focus_get() is app.screen_search_entry
+    slash = app._shortcut_handlers["<Key-slash>"]
+    assert slash(SimpleNamespace(widget=app.abstract_text)) == "break"
+    assert requests == ["search"]
+    assert slash(SimpleNamespace(widget=app.queue_list)) == "break"
+    assert requests == ["search", "search"]
 
-    app.screen_year_entry.focus_set()
-    app.screen_year_entry.event_generate("<Key-slash>")
-    root.update()
-    assert root.focus_get() is app.screen_year_entry  # unchanged -- already typing
+    assert slash(SimpleNamespace(widget=app.screen_year_entry)) is None  # already typing
+    assert slash(SimpleNamespace(widget=app.screen_search_entry)) is None
+    assert requests == ["search", "search"]
     root.destroy()
 
 
@@ -2822,9 +2824,6 @@ def test_maybe_shortcuts_navigate_queue_and_route_decisions_locally(tmp_path, mo
     app._refresh_maybe_tab()
     assert len(app._maybe_occurrence_ids) == 2
     first, second = app._maybe_occurrence_ids
-    root.deiconify()
-    root.update()
-    app.maybe_tree.focus_force()
     app.maybe_tree.selection_set(first)
     app.maybe_tree.focus(first)
     app._render_maybe_detail()
@@ -3258,10 +3257,10 @@ def test_prisma_watermark_copy_and_live_data_label_are_fully_represented(tmp_pat
     assert app.prisma_live_data_label.cget("text") == "Live project data · preview only · not synthetic"
     export_note = next(
         child for child in app.prisma_audit_card.winfo_children()
-        if isinstance(child, ttk.Label) and child.cget("text").startswith("Full export authorization")
+        if isinstance(child, ttk.Label) and child.cget("text").startswith("Export package writes")
     )
     assert "official watermarked PRISMA diagram and audit log" in expected_watermark
-    assert "read-only counts snapshot, not a separate export path." in export_note.cget("text")
+    assert "read-only preview, not a separate export path." in export_note.cget("text")
     assert int(export_note.cget("wraplength")) <= app.prisma_audit_card.winfo_width() - 24
     root.destroy()
 
@@ -3577,7 +3576,7 @@ def test_prisma_diagram_fits_full_flow_in_landscape_viewport(tmp_path):
     assert int(canvas.cget("height")) == 205
     assert int(canvas.cget("width")) <= 610
     assert max(canvas.coords(item)[1] for item in canvas.find_withtag("all") if canvas.type(item) == "text") < int(canvas.cget("height"))
-    assert sum(1 for item in canvas.find_withtag("all") if canvas.type(item) == "line") == 7
+    assert sum(1 for item in canvas.find_withtag("all") if canvas.type(item) == "line" and "grid" not in canvas.gettags(item)) == 7  # arrows, not graph paper
     assert not canvas.cget("yscrollcommand")
     assert not canvas.cget("xscrollcommand")
     positions = {
@@ -4386,3 +4385,1141 @@ def test_project_reset_clears_database_and_attachments_and_allows_import(tmp_pat
     assert app.conn.execute("SELECT COUNT(*) FROM occurrences").fetchone()[0] == 1
     root.destroy()
 
+
+
+# ---- R6 UI polish: defects found in the 1.0.0 aesthetics review ----
+
+def _effective_background(widget) -> str | None:
+    """Background a widget actually paints: ttk via its style, classic Tk via its option."""
+    if isinstance(widget, ttk.Widget):
+        if "background" in widget.keys() and str(widget.cget("background")):
+            return str(widget.cget("background"))
+        style = widget.cget("style") or widget.winfo_class()
+        return ttk.Style(widget).lookup(style, "background") or None
+    try:
+        return str(widget.cget("background"))
+    except tk.TclError:
+        return None
+
+
+def _iter_widgets(widget):
+    yield widget
+    for child in widget.winfo_children():
+        yield from _iter_widgets(child)
+
+
+def _seed_side_box_reports(app):
+    from screening_workbench import reports
+
+    source_id, branch_id = app._ensure_default_source()
+    result = commit_csv_import(
+        app.conn, "title\nSynthetic not-retrieved report\nSynthetic excluded report\n", {0: "title"},
+        source_id=source_id, branch_id=branch_id, operation_id="r6-side-box-seed", actor="owner",
+    )
+    rows = app.conn.execute(
+        "SELECT o.occurrence_id, f.fields_json FROM occurrences o "
+        "JOIN occurrence_fields f ON f.occurrence_id=o.occurrence_id WHERE o.batch_id=?",
+        (result.batch_id,),
+    ).fetchall()
+    ids = {json.loads(row["fields_json"])["title"]: row["occurrence_id"] for row in rows}
+    for occurrence_id in ids.values():
+        screening.cast_vote(app.conn, occurrence_id=occurrence_id, reviewer_id="owner", decision="include")
+    not_retrieved = reports.promote_occurrence_to_report(app.conn, "owner", ids["Synthetic not-retrieved report"])
+    reports.mark_not_retrieved(app.conn, "owner", not_retrieved)
+    excluded = reports.promote_occurrence_to_report(app.conn, "owner", ids["Synthetic excluded report"])
+    reports.record_full_text_assessment(app.conn, "owner", excluded, "excluded", exclusion_reason="wrong_population")
+    app.refresh_all_tabs()
+
+
+@requires_tk
+def test_r6_widgets_inside_cards_paint_the_card_surface(tmp_path):
+    """No grey canvas-colored band or tinted middle panel inside a white card."""
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-card-surface.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    root.update()
+
+    cards = [w for w in _iter_widgets(root) if isinstance(w, ttk.Frame) and w.cget("style") == "Card.TFrame"]
+    assert len(cards) >= 18  # every tab's cards except Screening's flat queue and support columns
+    nested = [str(c) for c in cards if any(str(c).startswith(str(o) + ".") for o in cards)]
+    assert nested == [], "an inner frame picked up the bordered card style"
+    mismatched = []
+    for card in cards:
+        for widget in _iter_widgets(card):
+            if widget is card or not isinstance(widget, (ttk.Frame, ttk.Label, ttk.Checkbutton, ttk.Radiobutton)):
+                continue
+            master_bg = _effective_background(widget.master)
+            if master_bg == theme.TOKENS["surface"] and _effective_background(widget) != theme.TOKENS["surface"]:
+                mismatched.append((str(widget), widget.winfo_class(), _effective_background(widget)))
+    assert mismatched == []
+    root.destroy()
+
+
+@requires_tk
+def test_r6_no_ui_text_names_a_source_file(tmp_path):
+    import re
+
+    root = tk.Tk()
+    root.geometry("1280x800")
+    ScreeningWorkbenchApp(root, str(tmp_path / "r6-copy.sqlite"), reviewer_id="owner")
+    root.update()
+
+    leaks = []
+    for widget in _iter_widgets(root):
+        texts = []
+        if isinstance(widget, tk.Text):
+            texts.append(widget.get("1.0", "end"))
+        else:
+            try:
+                texts.append(str(widget.cget("text")))
+            except tk.TclError:
+                pass
+        leaks += [text for text in texts if re.search(r"\b\w+\.py\b", text)]
+    assert leaks == []
+    root.destroy()
+
+
+@requires_tk
+@pytest.mark.parametrize("seeded", [False, True])
+def test_r6_prisma_diagram_text_boxes_and_arrows_do_not_collide(tmp_path, seeded):
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / f"r6-prisma-layout-{seeded}.sqlite"), reviewer_id="owner")
+    if seeded:
+        _seed_side_box_reports(app)
+    app.section_nav_buttons["prisma"].invoke()
+    root.update()
+
+    canvas = app.prisma_diagram_canvas
+    width, height = int(canvas.cget("width")), int(canvas.cget("height"))
+    rects = [canvas.coords(i) for i in canvas.find_all() if canvas.type(i) == "rectangle"]
+    texts = [(canvas.itemcget(i, "text"), canvas.bbox(i)) for i in canvas.find_all() if canvas.type(i) == "text"]
+    lines = [canvas.coords(i) for i in canvas.find_all() if canvas.type(i) == "line" and "grid" not in canvas.gettags(i)]
+    assert len(rects) == 8
+
+    def overlaps(a, b):
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+    for index, a in enumerate(rects):
+        assert all(not overlaps(a, b) for b in rects[index + 1:]), "PRISMA boxes overlap"
+    for index, (text, a) in enumerate(texts):
+        assert 0 <= a[0] and a[2] <= width and 0 <= a[1] and a[3] <= height, f"{text!r} leaves the canvas"
+        for other, b in texts[index + 1:]:
+            assert not overlaps(a, b), f"{text!r} collides with {other!r}"
+    left_edge = min(r[0] for r in rects)
+    for text, box in texts:
+        inside = [r for r in rects if r[0] <= box[0] and box[2] <= r[2] and r[1] <= box[1] and box[3] <= r[3]]
+        if not inside:
+            assert box[2] <= left_edge, f"stage label {text!r} runs into the boxes"
+    side_x = max(r[0] for r in rects)
+    for x1, y1, x2, y2 in lines:
+        if abs(x2 - side_x) < 1:
+            assert y1 == y2, "exclusion arrows must run horizontally"
+    root.destroy()
+
+
+@requires_tk
+def test_r6_prisma_identification_counts_visible_without_scrolling(tmp_path):
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-counts.sqlite"), reviewer_id="owner")
+    app.section_nav_buttons["prisma"].invoke()
+    root.update()
+
+    text = app.prisma_counts_text
+    assert text.get("7.0", "7.end").startswith("Open fuzzy pairs")
+    info = text.dlineinfo("7.0")
+    assert info is not None, "Open fuzzy pairs needs scrolling to be seen"
+    assert info[3] == text.dlineinfo("1.0")[3], "Open fuzzy pairs is clipped at the bottom edge"
+    root.destroy()
+
+
+@requires_tk
+def test_r6_audit_log_time_shows_whole_seconds_in_utc(tmp_path):
+    import re
+    import tkinter.font as tkfont
+
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-audit.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    app.section_nav_buttons["prisma"].invoke()
+    root.update()
+
+    tree = app.prisma_audit_tree
+    assert tree.heading("time", "text") == "Time (UTC)"
+    times = [tree.set(iid, "time") for iid in tree.get_children()]
+    assert times and all(re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", t) for t in times)
+    font = tkfont.Font(root=root, font=ttk.Style(root).lookup("Treeview", "font"))
+    assert int(tree.column("time", "width")) >= font.measure(times[0]) + 8
+    root.destroy()
+
+
+@requires_tk
+def test_r6_menubar_buttons_have_no_dropdown_indicator(tmp_path):
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-menubar.sqlite"), reviewer_id="owner")
+
+    layout = repr(ttk.Style(root).layout("ChromeMenu.TMenubutton"))
+    assert "indicator" not in layout
+    assert "label" in layout
+    assert [b.cget("text") for b in app.menubar_buttons] == ["File", "Project", "View", "Help"]
+    assert all(b.winfo_reqwidth() < 80 for b in app.menubar_buttons), "menus still reserve indicator width"
+    root.destroy()
+
+
+@requires_tk
+def test_r6_blind_chip_never_borrows_decision_colors(tmp_path):
+    from screening_workbench import theme
+
+    decision_colors = {theme.TOKENS[k] for k in (
+        "include", "maybe", "exclude", "include_soft", "maybe_soft", "exclude_soft",
+    )}
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-blind-chip.sqlite"), reviewer_id="owner")
+    for blind in (False, True):
+        roles.set_blind(app.conn, "owner", blind)
+        app.refresh_all_tabs()
+        fg, bg = app.blind_chip_label.cget("foreground"), app.blind_chip_label.cget("background")
+        assert fg not in decision_colors and bg not in decision_colors
+        assert theme.contrast_ratio(fg, bg) >= 4.5
+    root.destroy()
+
+
+@requires_tk
+def test_r6_header_export_is_the_primary_action_and_secondary_actions_are_ttk(tmp_path):
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-buttons.sqlite"), reviewer_id="owner")
+
+    assert app.export_button.cget("style") == "Inverse.TButton"
+    for button in (app.undo_button, app.skip_button):
+        assert isinstance(button, ttk.Button)
+        assert button.cget("style") == "Quiet.TButton"
+    assert app.undo_button.cget("text") == "Undo  Ctrl+Z"
+    assert app.skip_button.cget("text") == "Skip  J"
+    root.destroy()
+
+
+@requires_tk
+def test_r6_duplicate_comparison_wraps_instead_of_overflowing(tmp_path):
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r6-dup-compare.sqlite"), reviewer_id="owner")
+    title_a = "Blue glass greenhouse -- pilot in Modelton with an intentionally long synthetic subtitle"
+    title_b = "Blue-glass greenhouse: a pilot in Modelton with an intentionally long synthetic subtitle"
+    occ_ids = _seed_two_occurrences(app, title_a, title_b, authors="Sample Author; T. Fiction", year="2023")
+    app.refresh_all_tabs()
+    app.notebook.select(2)
+    app.dup_list.selection_set(0)
+    app._render_dup_cluster()
+    root.update()
+
+    text = app.dup_compare_text
+    body = text.get("1.0", "end")
+    assert text.cget("wrap") == "word"
+    assert text.xview() == (0.0, 1.0), "comparison still overflows horizontally"
+    assert title_a in body and title_b in body
+    assert all(occ_id in body for occ_id in occ_ids)
+    assert "Difference" in body
+    survivors = app.dup_survivor_list
+    assert survivors.size() == 2 and int(survivors.cget("height")) >= 2
+    assert survivors.pack_info()["fill"] == "x"
+    assert survivors.winfo_width() >= app.dup_resolution_panel.winfo_width() - 4
+    root.destroy()
+
+
+# ---- Direction 02 R1: bundled typefaces ----
+
+BUNDLED_FONT_SHA256 = {
+    "AtkinsonHyperlegibleMono-Bold.ttf": "51ad68fafd7ec68051f64983c9c23182a7084268b5cdb0a154dbd53ade079da6",
+    "AtkinsonHyperlegibleMono-Italic.ttf": "356060ab70ae62e4460dd824ec1b734af24e5c3355a8302700151d35d1382dd4",
+    "AtkinsonHyperlegibleMono-Regular.ttf": "2c9a7b9fabebd5c746a808d8a1ef2f52e618850caad6ec4fd9f5c48f56e1c1af",
+    "AtkinsonHyperlegibleNext-Bold.ttf": "994414047df66bb4998d01c1cb1eeb4a2ddc4622d1aa56bbb8adbeca7645b041",
+    "AtkinsonHyperlegibleNext-Italic.ttf": "b7f8f03ceb28ebadb2de2332b2e869a00e8dbfb5c8e00fdbb06385770c8227e7",
+    "AtkinsonHyperlegibleNext-Regular.ttf": "88ed5c31a71584c7772963b02d04bef1eb7e3d2e9c8b9cb204339b1f82cf432c",
+    "Newsreader16pt-Bold.ttf": "9e3d485293bb2f86d22f1a9bfb8d7213cff188270fa240b5084e27290746aea7",
+    "Newsreader16pt-Italic.ttf": "292646cbb948153511e308fa80def59959746d70114bd0936ba0a7f67a33181d",
+    "Newsreader16pt-Medium.ttf": "ee2f66ee4c6c313acf211c952211f8c6c0c0d9fa6a17cd0ec0ceba13418b1aed",
+    "Newsreader16pt-Regular.ttf": "0636887c9f72f77ce188f0b31029be58e65adae5a47e6d2887ad5020c2c75036",
+}
+
+
+def test_r1_bundled_fonts_are_exactly_the_audited_files():
+    import hashlib
+
+    from screening_workbench import typefaces as fonts
+
+    shipped = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in fonts.FONT_DIR.glob("*") if p.is_file()}
+    assert shipped == BUNDLED_FONT_SHA256
+    notices = Path(__file__).resolve().parents[1] / "docs" / "notices"
+    for name in ("Newsreader-OFL.txt", "AtkinsonHyperlegibleNext-OFL.txt", "AtkinsonHyperlegibleMono-OFL.txt"):
+        assert "SIL Open Font License, Version 1.1" in (notices / name).read_text(encoding="utf-8")
+    packaging = (Path(__file__).resolve().parents[1] / "docs" / "packaging.md").read_text(encoding="utf-8")
+    assert "screening_workbench/fonts" in packaging
+    assert all(name in packaging for name in ("Newsreader-OFL.txt", "AtkinsonHyperlegibleNext-OFL.txt", "AtkinsonHyperlegibleMono-OFL.txt"))
+
+
+def test_r1_font_loader_returns_nothing_without_a_font_dir(tmp_path, monkeypatch):
+    from screening_workbench import typefaces as fonts
+
+    monkeypatch.setattr(fonts, "FONT_DIR", tmp_path / "missing")
+    monkeypatch.setattr(fonts, "_loaded", None)
+    assert fonts.load_bundled_fonts() == []
+
+
+def test_r1_font_stacks_keep_direction_01_fonts_as_fallbacks():
+    from screening_workbench import theme
+
+    assert theme.FONT_FALLBACKS[theme.FONT_UI][:2] == ("Atkinson Hyperlegible Next", "Segoe UI")
+    assert theme.FONT_FALLBACKS[theme.FONT_READING][:3] == ("Newsreader 16pt", "Iowan Old Style", "Palatino Linotype")
+    assert theme.FONT_FALLBACKS[theme.FONT_TITLE][0] == "Newsreader 16pt Medium"
+    assert theme.FONT_FALLBACKS[theme.FONT_MONO][:2] == ("Atkinson Hyperlegible Mono", "Cascadia Code")
+    for stack in theme.FONT_FALLBACKS.values():
+        assert stack[-1].startswith("Tk")
+
+
+@requires_tk
+@pytest.mark.skipif(os.name != "nt", reason="private GDI font loading is Windows-only")
+def test_r1_app_resolves_bundled_faces_first(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r1-fonts.sqlite"), reviewer_id="owner")
+    assert (app.font_ui, app.font_reading, app.font_title, app.font_mono) == (
+        "Atkinson Hyperlegible Next", "Newsreader 16pt", "Newsreader 16pt Medium", "Atkinson Hyperlegible Mono",
+    )
+    assert "Newsreader 16pt Medium" in str(app.title_label.cget("font"))
+    assert theme.resolve_font(root, theme.FONT_UI) == "Atkinson Hyperlegible Next"
+    root.destroy()
+
+
+# ---- Direction 02 R2: drawer palette and chrome ----
+
+@requires_tk
+def test_r2_window_chrome_is_the_drawer(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r2-chrome.sqlite"), reviewer_id="owner")
+    style = ttk.Style(root)
+    drawer = theme.TOKENS["drawer"]
+    for frame in (app.menubar_frame, app.header_frame, app.section_nav, app.status_bar):
+        assert style.lookup(frame.cget("style"), "background") == drawer, str(frame)
+    for name in ("ChromeMenu.TMenubutton", "Header.TLabel", "Wordmark.TLabel", "Section.TButton", "ActiveSection.TButton"):
+        assert style.lookup(name, "background") == drawer, name
+    assert style.lookup("Header.TLabel", "foreground") == theme.TOKENS["drawer_ink"]
+    assert style.lookup("Status.TLabel", "foreground") == theme.TOKENS["drawer_muted"]
+    assert style.lookup("Inverse.TButton", "background") == theme.TOKENS["surface"]
+    assert style.lookup("Inverse.TButton", "foreground") == drawer
+    file_menu = root.nametowidget(app.menubar_buttons[0].cget("menu"))
+    assert str(file_menu.cget("background")) == theme.TOKENS["surface"]
+    assert str(file_menu.cget("activebackground")) == theme.TOKENS["accent_soft"]
+    root.destroy()
+
+
+@requires_tk
+def test_r2_active_section_has_a_highlighter_underline(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r2-underline.sqlite"), reviewer_id="owner")
+
+    def underline_colors():
+        return {key: str(bar.cget("background")) for key, bar in app.section_nav_underlines.items()}
+
+    colors = underline_colors()
+    assert colors["screening"] == theme.TOKENS["signal"]
+    assert all(color == theme.TOKENS["drawer"] for key, color in colors.items() if key != "screening")
+    app.section_nav_buttons["prisma"].invoke()
+    colors = underline_colors()
+    assert colors["prisma"] == theme.TOKENS["signal"] and colors["screening"] == theme.TOKENS["drawer"]
+    assert all(int(bar.cget("height")) == 3 for bar in app.section_nav_underlines.values())
+    root.destroy()
+
+
+@requires_tk
+def test_r2_count_badges_mute_zero_and_flag_queues_that_need_a_person(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r2-badges.sqlite"), reviewer_id="owner")
+    _seed_two_occurrences(app, "Blue glass greenhouse -- pilot in Modelton", "Blue-glass greenhouse: a pilot in Modelton", year="2023")
+    app.refresh_all_tabs()
+
+    badges = app.section_nav_badges
+    assert badges["screening"].cget("style") == "CountBadge.TLabel"
+    assert badges["duplicates"].cget("style") == "CountBadgeAttention.TLabel"
+    assert badges["conflicts"].cget("text") == 0
+    assert badges["conflicts"].cget("style") == "CountBadgeZero.TLabel"
+    style = ttk.Style(root)
+    for name in ("CountBadge.TLabel", "CountBadgeZero.TLabel", "CountBadgeAttention.TLabel"):
+        fg, bg = style.lookup(name, "foreground"), style.lookup(name, "background")
+        assert theme.contrast_ratio(fg, bg) >= 4.5, name
+    assert style.lookup("CountBadgeAttention.TLabel", "background") == theme.TOKENS["signal"]
+    root.destroy()
+
+
+@requires_tk
+def test_r2_blind_chip_on_the_drawer_marks_on_with_the_highlighter(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r2-blind.sqlite"), reviewer_id="owner")
+    chip = app.blind_chip_label
+    assert str(chip.cget("foreground")) == theme.TOKENS["drawer_muted"]
+    assert str(chip.cget("highlightbackground")) == theme.TOKENS["drawer_muted"]
+    roles.set_blind(app.conn, "owner", True)
+    app.refresh_all_tabs()
+    assert str(chip.cget("background")) == theme.TOKENS["drawer"]
+    assert str(chip.cget("foreground")) == theme.TOKENS["drawer_ink"]
+    assert str(chip.cget("highlightbackground")) == theme.TOKENS["signal"]
+    assert "ON" in chip.cget("text")
+    root.destroy()
+
+
+# ---- Direction 02 R3: the record as an index card ----
+
+def _seed_screening_records(app, rows):
+    source_id, branch_id = app._ensure_default_source()
+    text = "title,authors,year,journal,abstract\n" + "\n".join(rows) + "\n"
+    commit_csv_import(
+        app.conn, text, {0: "title", 1: "authors", 2: "year", 3: "journal", 4: "abstract"},
+        source_id=source_id, branch_id=branch_id, operation_id="r3-seed", actor="owner",
+    )
+    app.refresh_all_tabs()
+
+
+R3_ROWS = [
+    "Synthetic coastal sensor calibration,Alex Sample,2021,Imaginary Marine Methods,Fictional calibration study; Calibration drift is invented.",
+    "Synthetic seabird route observation,B. Fiction,2022,Invented Coastal Science,Invented observational study of seabird routes.",
+    "Synthetic tidal habitat survey,C. Placeholder,2020,Imaginary Journal,Made-up survey of intertidal habitat cover.",
+]
+
+
+@requires_tk
+def test_r3_record_card_is_the_only_raised_object_on_screening(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-raised.sqlite"), reviewer_id="owner")
+    style = ttk.Style(root)
+    assert app.screen_record_card.cget("style") == "Card.TFrame"
+    for column in (app.screen_queue_card, app.screen_support_card):
+        assert column.cget("style") == "Desk.TFrame"
+        assert style.lookup("Desk.TFrame", "background") == theme.TOKENS["canvas"]
+        assert style.lookup("Desk.TFrame", "relief") in ("", "flat")
+    root.destroy()
+
+
+@requires_tk
+def test_r3_call_number_rule_tracks_record_position(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.geometry("1280x800")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-rule.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+    root.update()
+
+    rule = app.position_progress
+    assert isinstance(rule, tk.Canvas)
+    assert rule["maximum"] == 3 and rule["value"] == 1
+    width = rule.winfo_width()
+    x1, _, x2, _ = rule.coords(rule.find_withtag("progress")[0])
+    assert abs((x2 - x1) - width / 3) <= 1
+    assert rule.itemcget(rule.find_withtag("progress")[0], "fill") == theme.TOKENS["drawer"]
+    assert app.font_mono in str(app.position_label.cget("font"))
+    root.destroy()
+
+
+@requires_tk
+def test_r3_title_meta_and_abstract_read_like_a_card(tmp_path):
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-type.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+
+    assert app.font_title in str(app.title_label.cget("font")) and "16" in str(app.title_label.cget("font"))
+    assert app.meta_label.cget("text") == "Alex Sample · Imaginary Marine Methods · 2021"
+    abstract = app.abstract_text
+    assert int(abstract.cget("highlightthickness")) == 0
+    assert int(abstract.cget("spacing2")) == 4 and int(abstract.cget("spacing3")) == 8
+    assert app.font_reading in str(abstract.cget("font")) and "12" in str(abstract.cget("font"))
+    root.destroy()
+
+
+@requires_tk
+def test_r3_search_hits_are_highlighted_in_the_abstract(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-hits.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+
+    app.screen_search_entry.insert(0, "calibration")
+    app._apply_screening_filter()
+    ranges = app.abstract_text.tag_ranges("hit")
+    hits = [app.abstract_text.get(ranges[i], ranges[i + 1]) for i in range(0, len(ranges), 2)]
+    assert hits == ["calibration", "Calibration"]
+    assert str(app.abstract_text.tag_cget("hit", "background")) == theme.TOKENS["signal"]
+    assert str(app.abstract_text.tag_cget("hit", "foreground")) == theme.TOKENS["ink"]
+
+    app._clear_screening_filter()
+    assert app.abstract_text.tag_ranges("hit") == ()
+    root.destroy()
+
+
+@requires_tk
+def test_r3_current_queue_row_and_reason_keys_use_card_catalogue_marks(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-queue.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+
+    current = app.current_occurrence_id
+    assert app.queue_list.item(current, "text").startswith("▸ Now  ")
+    assert str(app.queue_list.tag_configure("current", "background")) == theme.TOKENS["signal_soft"]
+    assert str(app.queue_list.tag_configure("current", "foreground")) == theme.TOKENS["ink"]
+    assert [k.cget("text") for k in app.reason_keycaps] == [str(i) for i in range(1, 8)]
+    for keycap in app.reason_keycaps:
+        assert str(keycap.cget("background")) == theme.TOKENS["surface"]
+        assert str(keycap.cget("highlightbackground")) == theme.TOKENS["line_strong"]
+        assert app.font_mono in str(keycap.cget("font"))
+    root.destroy()
+
+
+@requires_tk
+def test_r3_decision_controls_and_key_legend_stay_inside_the_record_card(tmp_path):
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-fit.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+    root.deiconify()
+    root.update()
+
+    card_bottom = app.screen_record_card.winfo_rooty() + app.screen_record_card.winfo_height()
+    for widget in (app.include_button, app.undo_button, app.skip_button, app.screen_key_legend):
+        assert widget.winfo_ismapped(), str(widget)
+        assert widget.winfo_height() >= widget.winfo_reqheight(), f"{widget} is squeezed"
+        assert widget.winfo_rooty() + widget.winfo_height() <= card_bottom, f"{widget} falls below the card"
+    root.destroy()
+
+
+@requires_tk
+def test_r3_fulltext_attachment_list_keeps_a_full_row_with_bundled_faces(tmp_path):
+    import tkinter.font as tkfont
+
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-attach-row.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    app.section_nav_buttons["fulltext"].invoke()
+    app.report_list.selection_set(0)
+    app.report_list.event_generate("<<ListboxSelect>>")
+    root.deiconify()
+    root.update()
+
+    row = tkfont.Font(root=root, font=app.attachment_listbox.cget("font")).metrics("linespace")
+    assert app.attachment_listbox.winfo_height() >= row + 2, "attached-PDF list is crushed below one row"
+    card_bottom = app.fulltext_support_card.winfo_rooty() + app.fulltext_support_card.winfo_height()
+    assert app.attach_pdf_btn.winfo_rooty() + app.attach_pdf_btn.winfo_height() <= card_bottom
+    root.destroy()
+
+
+@requires_tk
+def test_r3_disabled_toggles_on_a_card_keep_the_card_surface(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-disabled-radio.sqlite"), reviewer_id="owner")
+    style = ttk.Style(root)
+    for radio in app.maybe_reason_buttons:
+        assert radio.instate(["disabled"])
+        assert style.lookup(radio.cget("style"), "background", ("disabled",)) == theme.TOKENS["surface"]
+    root.destroy()
+
+
+@requires_tk
+def test_r3_prisma_watermark_notice_wraps_inside_its_card(tmp_path):
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-watermark-wrap.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    app.section_nav_buttons["prisma"].invoke()
+    root.deiconify()
+    root.update()
+
+    inner_width = app.prisma_flow_card.winfo_width() - 24
+    for label in (app.prisma_watermark_label, app.prisma_live_data_label):
+        assert label.winfo_reqwidth() <= inner_width, f"{label.cget('text')[:40]!r} is clipped"
+    root.destroy()
+
+
+# ---- Direction 02 R3 (finish): keycap decision buttons, armed reasons ----
+
+@requires_tk
+def test_r3_decision_buttons_show_a_keycap_beside_the_word(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-keycaps.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+
+    expected = {
+        "include": (app.include_button, "I", "Include"),
+        "maybe": (app.maybe_button, "M", "Maybe"),
+        "exclude": (app.exclude_button, "E", "Exclude..."),
+    }
+    for decision, (button, key, word) in expected.items():
+        assert button.keycap.cget("text") == key
+        assert button.label.cget("text") == word
+        assert button.cget("text") == f"{key}  {word}"
+        assert app.font_mono in str(button.keycap.cget("font"))
+        assert str(button.keycap.cget("foreground")) == theme.TOKENS[decision]
+        assert str(button.keycap.cget("background")) == theme.TOKENS["surface"]
+        assert str(button.keycap.cget("highlightbackground")) == theme.TOKENS[f"{decision}_border"]
+        assert str(button.cget("background")) == theme.TOKENS[f"{decision}_soft"]
+        assert str(button.label.cget("foreground")) == theme.TOKENS[decision]
+        assert theme.contrast_ratio(theme.TOKENS[decision], theme.TOKENS["surface"]) >= 4.5
+        assert str(button.cget("takefocus")) == "1"
+    root.destroy()
+
+
+@requires_tk
+def test_r3_keycap_buttons_act_like_buttons_from_mouse_and_keyboard(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r3-keycap-input.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+    root.deiconify()
+    root.update()
+    first, second = app.current_occurrence_id, app._queue_occurrence_ids[1]
+
+    app.include_button.keycap.event_generate("<Button-1>")
+    root.update()
+    assert screening.current_vote(app.conn, first, "owner")["decision"] == "include"
+
+    assert app.current_occurrence_id == second
+    app.maybe_button.event_generate("<FocusIn>")  # ring check without depending on OS focus
+    root.update()
+    assert int(app.maybe_button.cget("highlightthickness")) == 3
+    assert str(app.maybe_button.cget("highlightbackground")) == theme.TOKENS["focus"]
+    for seq in ("<Key-space>", "<Return>"):
+        assert app.maybe_button.bind(seq), f"{seq} is not bound on the keycap button"
+    assert app.maybe_button._on_activate_key(SimpleNamespace(widget=app.maybe_button)) == "break"
+    assert screening.current_vote(app.conn, second, "owner")["decision"] == "maybe"
+    assert app.include_button.winfo_height() >= 40
+    widths = {b.winfo_width() for b in (app.include_button, app.maybe_button, app.exclude_button)}
+    assert max(widths) - min(widths) <= 1, f"decision buttons differ in width: {widths}"
+    root.destroy()
+
+
+@requires_tk
+@pytest.mark.parametrize("picked", [True, False])
+def test_r3_reason_list_is_armed_only_while_an_exclusion_reason_is_pending(tmp_path, picked):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / f"r3-armed-{picked}.sqlite"), reviewer_id="owner")
+    _seed_screening_records(app, R3_ROWS)
+    occurrence_id = app.current_occurrence_id
+    style = ttk.Style(root)
+    seen = {}
+
+    def fake_prompt():
+        seen["armed"] = app.exclusion_reasons_armed
+        seen["keycap_fg"] = {str(k.cget("foreground")) for k in app.reason_keycaps}
+        seen["keycap_border"] = {str(k.cget("highlightbackground")) for k in app.reason_keycaps}
+        seen["row_bg"] = {style.lookup(label.cget("style"), "background") for label in app.reason_labels}
+        seen["button_ring"] = str(app.exclude_button.cget("highlightbackground"))
+        return screening.EXCLUSION_REASONS[2] if picked else None
+
+    app._prompt_exclusion_reason = fake_prompt
+    assert app.exclusion_reasons_armed is False
+    app.exclude_button.invoke()
+
+    assert seen == {
+        "armed": True,
+        "keycap_fg": {theme.TOKENS["exclude"]},
+        "keycap_border": {theme.TOKENS["exclude_border"]},
+        "row_bg": {theme.TOKENS["exclude_soft"]},
+        "button_ring": theme.TOKENS["focus"],
+    }
+    assert app.exclusion_reasons_armed is False
+    assert {str(k.cget("foreground")) for k in app.reason_keycaps} == {theme.TOKENS["ink"]}
+    assert {style.lookup(label.cget("style"), "background") for label in app.reason_labels} == {theme.TOKENS["canvas"]}
+    vote = screening.current_vote(app.conn, occurrence_id, "owner")
+    if picked:
+        assert vote["decision"] == "exclude" and vote["reason"] == screening.EXCLUSION_REASONS[2]
+    else:
+        assert vote is None
+    root.destroy()
+
+
+# ---- Direction 02 R4: decision stamp, reduced motion, progress tween ----
+
+README_ROWS_5 = R3_ROWS + [
+    "Synthetic ocean temperature model,D. Example,2023,Invented Marine Review,Fictional toy ocean temperature model.",
+    "Synthetic estuary sampling protocol,E. Sample,2024,Imaginary Ecology,Synthetic protocol for estuary sampling.",
+]
+
+
+@pytest.fixture
+def motion_on():
+    from screening_workbench import display_prefs
+
+    display_prefs.set_reduced_motion(False)
+    yield
+    display_prefs.set_reduced_motion(None)
+
+
+def _wait(root, seconds):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        root.update()
+        time.sleep(0.01)
+
+
+def _stamp_text(app):
+    canvas = app._stamp
+    return " ".join(canvas.itemcget(i, "text") for i in canvas.find_all() if canvas.type(i) == "text")
+
+
+def _screening_app(tmp_path, name, rows):
+    """Withdrawn app on the Screening tab: no real keystroke can reach it."""
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / name), reviewer_id="owner")
+    _seed_screening_records(app, rows)
+    root.update()
+    return root, app
+
+
+def _mapped_app(tmp_path, name, rows):
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / name), reviewer_id="owner")
+    _seed_screening_records(app, rows)
+    root.deiconify()
+    root.update()
+    return root, app
+
+
+@requires_tk
+def test_r4_stamp_lands_after_the_vote_is_saved_then_the_queue_advances(tmp_path, motion_on):
+    from screening_workbench import theme
+
+    root, app = _screening_app(tmp_path, "r4-stamp.sqlite", README_ROWS_5)
+    first, second = app._queue_occurrence_ids[:2]
+
+    app._decide("include")
+    assert screening.current_vote(app.conn, first, "owner")["decision"] == "include"
+    assert app.current_occurrence_id == first, "the card must not change under the stamp"
+    assert app._stamp is not None and app._stamp.winfo_manager() == "place"
+    assert app._stamp.master is app.screen_record_card
+    assert "INCLUDED" in _stamp_text(app)
+    _wait(root, 0.06)
+    texts = [i for i in app._stamp.find_all() if app._stamp.type(i) == "text"]
+    assert app._stamp.itemcget(texts[0], "fill") == theme.TOKENS["include"]
+    assert app._stamp.itemcget(texts[0], "angle") not in ("", "0", "0.0")
+
+    _wait(root, 0.25)
+    assert app._stamp is None
+    assert app.current_occurrence_id == second
+    root.destroy()
+
+
+@requires_tk
+def test_r4_rapid_keys_each_land_on_the_next_record(tmp_path, motion_on):
+    root, app = _screening_app(tmp_path, "r4-rapid.sqlite", README_ROWS_5)
+    ids = list(app._queue_occurrence_ids)
+
+    app._decide("include")
+    app._decide("include")
+    app._decide("maybe")
+    decisions = [(screening.current_vote(app.conn, occ, "owner") or {}).get("decision") for occ in ids]
+    assert decisions == ["include", "include", "maybe", None, None]
+    assert app.current_occurrence_id == ids[2], "only the last decision is still under its stamp"
+    assert len(app.screen_record_card.place_slaves()) == 1
+
+    _wait(root, 0.25)
+    assert app.current_occurrence_id == ids[3]
+    assert app.screen_record_card.place_slaves() == []
+    root.destroy()
+
+
+@requires_tk
+def test_r4_exclude_stamp_names_the_reason_and_undo_flushes_it(tmp_path, motion_on):
+    root, app = _screening_app(tmp_path, "r4-exclude.sqlite", README_ROWS_5)
+    first = app.current_occurrence_id
+    app._prompt_exclusion_reason = lambda: screening.EXCLUSION_REASONS[2]
+
+    app._decide("exclude")
+    assert "EXCLUDED" in _stamp_text(app)
+    assert screening.EXCLUSION_REASONS[2].upper() in _stamp_text(app)
+
+    app._undo_last_decision()
+    assert app._stamp is None
+    assert screening.current_vote(app.conn, first, "owner") is None
+    root.destroy()
+
+
+@requires_tk
+def test_r4_reduced_motion_never_draws_a_stamp(tmp_path):
+    from screening_workbench import display_prefs
+
+    display_prefs.set_reduced_motion(True)
+    try:
+        root, app = _screening_app(tmp_path, "r4-reduced.sqlite", README_ROWS_5)
+        first, second = app._queue_occurrence_ids[:2]
+        app._decide("include")
+        assert app._stamp is None
+        assert app.screen_record_card.place_slaves() == []
+        assert app.current_occurrence_id == second
+        assert screening.current_vote(app.conn, first, "owner")["decision"] == "include"
+        root.destroy()
+    finally:
+        display_prefs.set_reduced_motion(None)
+
+
+def test_r4_reduced_motion_saved_choice_precedes_env_then_windows(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs
+
+    monkeypatch.setenv("SW_SETTINGS_PATH", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("SW_REDUCE_MOTION", "1")
+    monkeypatch.setattr(display_prefs, "_motion_override", None)
+    monkeypatch.setattr(display_prefs, "_windows_animations_enabled", lambda: True)
+    assert display_prefs.save_theme("night") is True
+    assert display_prefs.save_reduced_motion(False) is True
+    assert display_prefs.saved_reduced_motion() is False
+    assert display_prefs.reduced_motion() is False
+    assert display_prefs._load_settings() == {"theme": "night", "reduce_motion": False}
+
+    display_prefs.set_reduced_motion(None)
+    assert display_prefs.reduced_motion() is False
+    assert display_prefs.save_reduced_motion(None) is True
+    assert display_prefs.saved_reduced_motion() is None
+    assert display_prefs.reduced_motion() is True
+    monkeypatch.delenv("SW_REDUCE_MOTION")
+    assert display_prefs.reduced_motion() is False
+
+
+def test_r4_reduced_motion_follows_override_then_env_then_windows(monkeypatch):
+    from screening_workbench import display_prefs
+
+    monkeypatch.setattr(display_prefs, "_motion_override", None)
+    monkeypatch.setenv("SW_REDUCE_MOTION", "1")
+    assert display_prefs.reduced_motion() is True
+    monkeypatch.delenv("SW_REDUCE_MOTION")
+    monkeypatch.setattr(display_prefs, "_windows_animations_enabled", lambda: False)
+    assert display_prefs.reduced_motion() is True
+    monkeypatch.setattr(display_prefs, "_windows_animations_enabled", lambda: True)
+    assert display_prefs.reduced_motion() is False
+    display_prefs.set_reduced_motion(True)
+    assert display_prefs.reduced_motion() is True
+    display_prefs.set_reduced_motion(None)
+    monkeypatch.setattr(display_prefs, "_windows_high_contrast", lambda: True)
+    assert display_prefs.high_contrast() is True
+
+
+@requires_tk
+def test_r4_view_menu_offers_reduce_motion(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs
+
+    monkeypatch.setenv("SW_SETTINGS_PATH", str(tmp_path / "settings.json"))
+    monkeypatch.setattr(display_prefs, "_motion_override", None)
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r4-menu.sqlite"), reviewer_id="owner")
+    view = root.nametowidget(app.menubar_buttons[2].cget("menu"))
+    entry = next(i for i in range(view.index("end") + 1) if view.type(i) == "checkbutton")
+    assert view.entrycget(entry, "label") == "Reduce motion"
+    try:
+        before = display_prefs.reduced_motion()
+        view.invoke(entry)
+        assert display_prefs.reduced_motion() is (not before)
+        assert display_prefs.saved_reduced_motion() is (not before)
+        view.invoke(entry)
+        assert display_prefs.reduced_motion() is before
+        assert display_prefs.saved_reduced_motion() is before
+    finally:
+        display_prefs.set_reduced_motion(None)
+    root.destroy()
+
+    restarted_root = tk.Tk()
+    restarted_root.withdraw()
+    restarted_app = ScreeningWorkbenchApp(restarted_root, str(tmp_path / "r4-menu-restart.sqlite"), reviewer_id="owner")
+    assert restarted_app.reduce_motion_var.get() is before
+    restarted_root.destroy()
+
+
+@requires_tk
+def test_r4_progress_rule_tweens_to_its_new_value(tmp_path, motion_on):
+    root, app = _mapped_app(tmp_path, "r4-tween.sqlite", README_ROWS_5)
+    rule = app.position_progress
+    width = rule.winfo_width()
+
+    def drawn():
+        x1, _, x2, _ = rule.coords(rule.find_withtag("progress")[0])
+        return x2 - x1
+
+    start = drawn()
+    rule.configure(maximum=5, value=5)
+    assert rule["value"] == 5
+    assert drawn() < width - 1, "the rule jumped instead of moving"
+    _wait(root, 0.25)
+    assert abs(drawn() - width) <= 1 and drawn() > start
+    root.destroy()
+
+
+# ---- Direction 02 R5: PRISMA graph paper (live preview only) ----
+
+@requires_tk
+def test_r5_prisma_preview_sits_on_graph_paper_behind_the_diagram(tmp_path):
+    from screening_workbench import theme
+
+    root = tk.Tk()
+    root.geometry("1280x800+40+40")
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r5-grid.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    app.section_nav_buttons["prisma"].invoke()
+    root.update()
+
+    canvas = app.prisma_diagram_canvas
+    grid = canvas.find_withtag("grid")
+    assert len(grid) > 20
+    items = canvas.find_all()
+    assert set(items[:len(grid)]) == set(grid), "graph paper must sit beneath every box, arrow and label"
+    colors = {canvas.itemcget(i, "fill") for i in grid}
+    assert colors == {theme.TOKENS["grid_minor"], theme.TOKENS["grid_major"]}
+    major = [canvas.coords(i) for i in grid if canvas.itemcget(i, "fill") == theme.TOKENS["grid_major"]]
+    assert all(int(c[0]) % 40 == 0 or int(c[1]) % 40 == 0 for c in major)
+    root.destroy()
+
+
+@requires_tk
+def test_r5_graph_paper_is_skipped_in_high_contrast_and_never_exported(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs, export, theme
+
+    monkeypatch.setattr(display_prefs, "high_contrast", lambda: True)
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "r5-hc.sqlite"), reviewer_id="owner")
+    _seed_side_box_reports(app)
+    app._refresh_prisma_diagram()
+    assert app.prisma_diagram_canvas.find_withtag("grid") == ()
+
+    svg = export.export_prisma_svg(app.conn)
+    assert theme.TOKENS["grid_minor"] not in svg and theme.TOKENS["grid_major"] not in svg
+    root.destroy()
+
+
+@requires_tk
+def test_r4_closing_the_window_mid_stamp_leaves_no_stray_timers(tmp_path, motion_on):
+    root, app = _screening_app(tmp_path, "r4-teardown.sqlite", README_ROWS_5)
+    app._decide("include")
+    pending = set(root.tk.call("after", "info"))
+    assert pending, "expected a pending stamp/tween timer before closing"
+    root.destroy()
+    assert app._pending_advance is None and app._stamp_settle_job is None
+    assert app.position_progress._tween_job is None
+
+
+@requires_tk
+def test_shortcut_guard_uses_the_widget_the_key_was_delivered_to(tmp_path):
+    """The typing guard reads event.widget, so a stale or missing OS focus
+    can neither block a real shortcut nor let a typed letter through."""
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "guard.sqlite"), reviewer_id="owner")
+    with patch.object(root, "focus_get", return_value=app.abstract_text):
+        assert app._is_typing_in_a_text_field(app.screen_search_entry) is True
+    with patch.object(root, "focus_get", return_value=app.screen_search_entry):
+        assert app._is_typing_in_a_text_field(app.abstract_text) is False
+        assert app._is_typing_in_a_text_field(app.queue_list) is False
+    assert app._is_typing_in_a_text_field(str(app.screen_year_entry)) is True
+    root.destroy()
+
+
+@requires_tk
+def test_stamp_follows_the_selected_tab_not_window_mapping(tmp_path, motion_on):
+    root, app = _screening_app(tmp_path, "stamp-tab.sqlite", README_ROWS_5)
+    assert not app.screen_record_card.winfo_ismapped()
+    app._decide("include")
+    assert app._stamp is not None, "Screening is selected, so the stamp shows even while withdrawn"
+    app._flush_pending_advance()
+    app.section_nav_buttons["prisma"].invoke()
+    app._decide("maybe")
+    assert app._stamp is None, "off the Screening tab a decision advances at once"
+    root.destroy()
+
+
+# ---- v2: Night Stacks dark palette and theme choice ----
+
+def test_v2_both_palettes_define_every_token_and_pass_every_text_pair():
+    from screening_workbench import theme
+
+    light, night = theme.PALETTES["light"], theme.PALETTES["night"]
+    assert set(light) == set(night)
+    assert set(theme.PALETTE_LABELS) == {"light", "night"}
+    for name, palette in theme.PALETTES.items():
+        for fg, bg in theme._CONTRAST_TOKEN_PAIRS:
+            assert theme.contrast_ratio(palette[fg], palette[bg]) >= 4.5, (name, fg, bg)
+    assert theme.PALETTE_CONTRAST["night"]["ink.surface"] >= 4.5
+    assert night["surface"] != light["surface"] and night["ink"] != light["ink"]
+
+
+def test_v2_use_palette_swaps_tokens_in_place():
+    from screening_workbench import theme
+
+    tokens = theme.TOKENS
+    try:
+        theme.use_palette("night")
+        assert theme.TOKENS is tokens and tokens == theme.PALETTES["night"]
+        assert theme.CURRENT_PALETTE == "night"
+    finally:
+        theme.use_palette("light")
+    assert tokens == theme.PALETTES["light"] and theme.CURRENT_PALETTE == "light"
+
+
+def test_v2_theme_choice_order_is_env_then_saved_then_windows(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs
+
+    monkeypatch.setenv("SW_SETTINGS_PATH", str(tmp_path / "settings.json"))
+    monkeypatch.delenv("SW_THEME", raising=False)
+    monkeypatch.setattr(display_prefs, "_windows_prefers_dark", lambda: True)
+    assert display_prefs.saved_theme() == "system"
+    assert display_prefs.palette() == "night"
+    monkeypatch.setattr(display_prefs, "_windows_prefers_dark", lambda: False)
+    assert display_prefs.palette() == "light"
+    assert display_prefs.save_theme("night") is True
+    assert display_prefs.saved_theme() == "night" and display_prefs.palette() == "night"
+    monkeypatch.setenv("SW_THEME", "light")
+    assert display_prefs.palette() == "light"
+    (tmp_path / "settings.json").write_text("not json", encoding="utf-8")
+    monkeypatch.delenv("SW_THEME")
+    assert display_prefs.saved_theme() == "system"
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        display_prefs.save_theme("sepia")
+
+
+def _off_palette_colors(root, palette):
+    """Every painted color on every widget must come from the palette.
+
+    Only colors Tk actually draws count: a highlight ring only when it has
+    width, and selection/insertion colors only on widgets that hold editable
+    or selectable text."""
+    allowed = {v.lower() for v in palette.values()}
+    style = ttk.Style(root)
+    problems = []
+    for widget in _iter_widgets(root):
+        if isinstance(widget, ttk.Widget):
+            name = widget.cget("style") or widget.winfo_class()
+            # clam's state maps (disabled/hover/pressed) paint their own greys
+            # unless every state is themed too.
+            for state in ((), ("disabled",), ("active",), ("pressed",)):
+                for option in ("background", "foreground", "fieldbackground", "indicatorbackground"):
+                    value = style.lookup(name, option, state)
+                    if value and value.lower() not in allowed:
+                        problems.append((str(widget), name, option, state, value))
+            continue
+        text_like = widget.winfo_class() in ("Text", "Entry", "Listbox", "Spinbox")
+        for option in ("background", "foreground", "highlightbackground", "selectbackground", "insertbackground"):
+            if option not in widget.keys():
+                continue
+            if option == "highlightbackground" and int(widget.cget("highlightthickness") or 0) == 0:
+                continue
+            if option in ("selectbackground", "insertbackground") and not text_like:
+                continue
+            if option == "insertbackground" and widget.winfo_class() == "Listbox":
+                continue
+            value = str(widget.cget(option))
+            if value and value.lower() not in allowed:
+                problems.append((str(widget), widget.winfo_class(), option, value))
+    return problems
+
+
+@requires_tk
+@pytest.mark.parametrize("palette_name", ["light", "night"])
+def test_v2_every_widget_paints_from_the_active_palette(tmp_path, monkeypatch, palette_name):
+    from screening_workbench import theme
+
+    monkeypatch.setenv("SW_THEME", palette_name)
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        app = ScreeningWorkbenchApp(root, str(tmp_path / f"palette-{palette_name}.sqlite"), reviewer_id="owner")
+        _seed_side_box_reports(app)
+        _seed_screening_records(app, R3_ROWS)
+        assert theme.CURRENT_PALETTE == palette_name
+        assert root.cget("background") == theme.PALETTES[palette_name]["canvas"]
+        assert _off_palette_colors(root, theme.PALETTES[palette_name]) == []
+        dialog = tk.Toplevel(root)  # dialogs (reason picker, CSV mapping) take the desk color too
+        assert str(dialog.cget("background")) == theme.PALETTES[palette_name]["canvas"]
+        root.destroy()
+    finally:
+        theme.use_palette("light")
+
+
+@requires_tk
+def test_v2_night_asks_windows_for_a_dark_title_bar(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs, theme
+
+    calls = []
+    monkeypatch.setattr(display_prefs, "set_dark_title_bar", lambda window, dark: calls.append(dark))
+    for name, expected in (("night", True), ("light", False)):
+        monkeypatch.setenv("SW_THEME", name)
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            ScreeningWorkbenchApp(root, str(tmp_path / f"titlebar-{name}.sqlite"), reviewer_id="owner")
+            assert calls[-1] is expected
+            root.destroy()
+        finally:
+            theme.use_palette("light")
+
+
+@requires_tk
+def test_v2_view_menu_saves_a_theme_for_the_next_start(tmp_path, monkeypatch):
+    from screening_workbench import display_prefs, theme
+
+    monkeypatch.setenv("SW_SETTINGS_PATH", str(tmp_path / "settings.json"))
+    root = tk.Tk()
+    root.withdraw()
+    app = ScreeningWorkbenchApp(root, str(tmp_path / "theme-menu.sqlite"), reviewer_id="owner")
+    view = root.nametowidget(app.menubar_buttons[2].cget("menu"))
+    cascade = next(i for i in range(view.index("end") + 1) if view.type(i) == "cascade")
+    assert view.entrycget(cascade, "label") == "Theme"
+    themes = root.nametowidget(view.entrycget(cascade, "menu"))
+    labels = [themes.entrycget(i, "label") for i in range(themes.index("end") + 1)]
+    assert labels == ["Match Windows", theme.PALETTE_LABELS["light"], theme.PALETTE_LABELS["night"]]
+    themes.invoke(2)
+    assert display_prefs.saved_theme() == "night"
+    assert "restart" in app.status_message_label.cget("text").lower()
+    assert theme.CURRENT_PALETTE == "light", "the running window keeps its palette until restart"
+    themes.invoke(0)
+    assert display_prefs.saved_theme() == "system"
+    root.destroy()

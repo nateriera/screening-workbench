@@ -5,4 +5,4 @@ docs/license-audit.md for the cleared build-tool-only PyInstaller/CPython
 toolchain, which is not an application runtime dependency).
 """
 
-__version__ = "0.1.0-dev"
+__version__ = "2.0.0"

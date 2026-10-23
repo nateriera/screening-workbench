@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:20f7c2e0-a4b4-4437-9f6c-0e53fb346204",
-  "version": 1,
+  "serialNumber": "urn:uuid:5a5f2f6a-ec82-4ad4-bbef-2bf49eb9162b",
+  "version": 2,
   "metadata": {
-    "timestamp": "2026-10-13T09:03:45-07:00",
+    "timestamp": "2026-10-22T17:04:17-07:00",
     "tools": [
       {
         "vendor": "OpenAI",
@@ -14,10 +14,10 @@
     ],
     "component": {
       "type": "application",
-      "bom-ref": "screening-workbench-1.0.0",
+      "bom-ref": "screening-workbench-2.0.0",
       "name": "Screening Workbench",
-      "version": "1.0.0",
-      "purl": "pkg:generic/screening-workbench@1.0.0?platform=windows-x64",
+      "version": "2.0.0",
+      "purl": "pkg:generic/screening-workbench@2.0.0?platform=windows-x64",
       "licenses": [
         {
           "license": {
@@ -34,23 +34,39 @@
       "properties": [
         {
           "name": "build.commit",
-          "value": "f93a88b12dbd32272c7e9dc5bf8544478df9f160"
+          "value": "5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7"
         },
         {
           "name": "release.archive",
-          "value": "Screening-Workbench-1.0.0-windows-x64.zip"
+          "value": "Screening-Workbench-2.0.0-windows-x64.zip"
         },
         {
           "name": "release.archive.sha256",
-          "value": "3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c"
+          "value": "15a30f396e00f7367485181f140601899cb1b8ba5ff074ee52db64c9243f49a7"
         },
         {
-          "name": "scope.note",
+          "name": "scope.note.v1.0.0.historical",
           "value": "Draft/runtime SBOM from frozen distribution plus official CPython SBOM and provenance checks. The 2026-10-13 release ZIP was rebuilt with 14 notice files. It records unresolved native version/provenance differences: OpenSSL DLLs 3.5.8 vs official CPython SBOM 3.5.7; sqlite3.dll 3.53.1.0 vs 3.50.4.0; zlib1.dll resource 1.3.2 vs zlib-ng 2.2.4. Do not treat this SBOM as legal clearance. Build-only PyInstaller, hooks, and their transitive dependencies are omitted because they were not found bundled in the release tree. Windows-provided dependencies may remain external. Amendment 2026-10-21: the archive was rebuilt from the same source commit (f93a88b) after the 2026-10-13 artifact was lost with its scratch folder; the release.archive properties now record the rebuilt archive (16,702,642 bytes, SHA-256 3288d64ff81929a72d2f8e6859114cc0c9c2aa83b250578ff91ae6e222ddff5c, 1,013 entries, integrity check passed, smoke test passed). The component inventory is unchanged: the rebuild used the same CPython 3.14.7 archive and Tcl/Tk MSI, whose hashes were verified at build time against docs/packaging.md. Per-DLL hashes recorded in this SBOM were measured on the 2026-10-13 tree."
         },
         {
           "name": "release.archive.size.bytes",
-          "value": "16702642"
+          "value": "17398639"
+        },
+        {
+          "name": "release.archive.entries",
+          "value": "1029"
+        },
+        {
+          "name": "release.archive.integrity",
+          "value": "pass: ZipFile.testzip returned null"
+        },
+        {
+          "name": "release.smoke.status",
+          "value": "passed: exact-ZIP gate completed by automated Light full workflow with exit code 0 and owner desktop attestation (2026-10-23): Open selected opened the attached synthetic PDF in Chrome PDF viewer, the owner captured Night-theme Screening, and the app closed normally. See docs/release-gate-2.0.0.md."
+        },
+        {
+          "name": "scope.note",
+          "value": "Phase 1 v2.0.0 package: 1,029 entries and ZIP integrity passed; ten TTF files and sixteen notices verified. Builder and independent detached full suites each passed 437 tests on CPython 3.14.2/Tk 8.6.15 and CPython 3.14.7/Tk 9.0.4. The earlier real-profile WAL incident was closed by owner-directed backup and transactional deletion; the import event was retained and integrity_check passed. Final packaged UI gate passed on 2026-10-23 based on the automated Light run and owner desktop check; see docs/release-gate-2.0.0.md. The CRT pair is byte-identical to v1.0.0 and entitlement carries under the owner ruling; the UCRT/API-set delta is attributed to build-host Windows SDK/UCRT variance and the v1 Windows SDK basis. No other runtime change. Inherited OpenSSL, SQLite, and zlib provenance questions remain subject to Cinder review; post-push review remains pending before tag or release."
         }
       ]
     }
@@ -547,13 +563,210 @@
           "value": "_internal/_zstd.pyd"
         }
       ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "font-newsreader-1.003",
+      "name": "Newsreader (16pt static cuts)",
+      "version": "1.003",
+      "licenses": [
+        {
+          "license": {
+            "id": "OFL-1.1"
+          }
+        }
+      ],
+      "copyright": "Copyright 2020 The Newsreader Project Authors",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/productiontype/NewsReader/tree/cfcb4f7af0e52c25e8df2a2431814c8e5fe2e155"
+        }
+      ],
+      "components": [
+        {
+          "type": "file",
+          "bom-ref": "font-newsreader-1.003:Newsreader16pt-Regular.ttf",
+          "name": "_internal/screening_workbench/fonts/Newsreader16pt-Regular.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "0636887c9f72f77ce188f0b31029be58e65adae5a47e6d2887ad5020c2c75036"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-newsreader-1.003:Newsreader16pt-Italic.ttf",
+          "name": "_internal/screening_workbench/fonts/Newsreader16pt-Italic.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "292646cbb948153511e308fa80def59959746d70114bd0936ba0a7f67a33181d"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-newsreader-1.003:Newsreader16pt-Medium.ttf",
+          "name": "_internal/screening_workbench/fonts/Newsreader16pt-Medium.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "ee2f66ee4c6c313acf211c952211f8c6c0c0d9fa6a17cd0ec0ceba13418b1aed"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-newsreader-1.003:Newsreader16pt-Bold.ttf",
+          "name": "_internal/screening_workbench/fonts/Newsreader16pt-Bold.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "9e3d485293bb2f86d22f1a9bfb8d7213cff188270fa240b5084e27290746aea7"
+            }
+          ]
+        }
+      ],
+      "properties": [
+        {
+          "name": "notice",
+          "value": "notices/Newsreader-OFL.txt"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "font-atkinson-hyperlegible-next-2.001",
+      "name": "Atkinson Hyperlegible Next",
+      "version": "2.001",
+      "licenses": [
+        {
+          "license": {
+            "id": "OFL-1.1"
+          }
+        }
+      ],
+      "copyright": "Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/googlefonts/atkinson-hyperlegible-next/tree/7925f50f649b3813257faf2f4c0b381011f434f1"
+        }
+      ],
+      "components": [
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-next-2.001:AtkinsonHyperlegibleNext-Regular.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleNext-Regular.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "88ed5c31a71584c7772963b02d04bef1eb7e3d2e9c8b9cb204339b1f82cf432c"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-next-2.001:AtkinsonHyperlegibleNext-Bold.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleNext-Bold.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "994414047df66bb4998d01c1cb1eeb4a2ddc4622d1aa56bbb8adbeca7645b041"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-next-2.001:AtkinsonHyperlegibleNext-Italic.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleNext-Italic.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "b7f8f03ceb28ebadb2de2332b2e869a00e8dbfb5c8e00fdbb06385770c8227e7"
+            }
+          ]
+        }
+      ],
+      "properties": [
+        {
+          "name": "notice",
+          "value": "notices/AtkinsonHyperlegibleNext-OFL.txt"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "font-atkinson-hyperlegible-mono-2.001",
+      "name": "Atkinson Hyperlegible Mono",
+      "version": "2.001",
+      "licenses": [
+        {
+          "license": {
+            "id": "OFL-1.1"
+          }
+        }
+      ],
+      "copyright": "Copyright 2020-2024 The Atkinson Hyperlegible Mono Project Authors",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/googlefonts/atkinson-hyperlegible-next-mono/tree/154d50362016cc3e873eb21d242cd0772384c8f9"
+        }
+      ],
+      "components": [
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-mono-2.001:AtkinsonHyperlegibleMono-Regular.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleMono-Regular.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "2c9a7b9fabebd5c746a808d8a1ef2f52e618850caad6ec4fd9f5c48f56e1c1af"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-mono-2.001:AtkinsonHyperlegibleMono-Bold.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleMono-Bold.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "51ad68fafd7ec68051f64983c9c23182a7084268b5cdb0a154dbd53ade079da6"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "bom-ref": "font-atkinson-hyperlegible-mono-2.001:AtkinsonHyperlegibleMono-Italic.ttf",
+          "name": "_internal/screening_workbench/fonts/AtkinsonHyperlegibleMono-Italic.ttf",
+          "hashes": [
+            {
+              "alg": "SHA-256",
+              "content": "356060ab70ae62e4460dd824ec1b734af24e5c3355a8302700151d35d1382dd4"
+            }
+          ]
+        }
+      ],
+      "properties": [
+        {
+          "name": "notice",
+          "value": "notices/AtkinsonHyperlegibleMono-OFL.txt"
+        }
+      ]
     }
   ],
   "dependencies": [
     {
-      "ref": "screening-workbench-1.0.0",
+      "ref": "screening-workbench-2.0.0",
       "dependsOn": [
-        "cpython-3.14.7"
+        "cpython-3.14.7",
+        "font-newsreader-1.003",
+        "font-atkinson-hyperlegible-next-2.001",
+        "font-atkinson-hyperlegible-mono-2.001"
       ]
     },
     {

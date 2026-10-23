@@ -16,15 +16,20 @@ not silently dropped behavior.
 """
 from __future__ import annotations
 
+import datetime
 import json
+import math
 import os
 import shutil
 import sqlite3
 import tempfile
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from screening_workbench import attachments, db, dedup, export, packets, prisma, reports, roles, screening, studies, theme
+from screening_workbench import (
+    attachments, db, dedup, display_prefs, export, packets, prisma, reports, roles, screening, studies, theme, typefaces,
+)
 from screening_workbench.importers import CANONICAL_FIELDS
 from screening_workbench.importers.csv_importer import commit_csv_import, preview_csv
 from screening_workbench.importers.limits import ImportLimitError, read_limited_bytes, read_limited_text
@@ -49,6 +54,188 @@ def validate_csv_mapping(mapping: dict[int, str]) -> str | None:
     return None
 
 
+class _CallNumberRule(tk.Canvas):
+    """The record card's catalogue double rule, doubling as its progress bar.
+
+    Keeps ttk.Progressbar's ``maximum``/``value`` interface. The label above
+    states the same position in text, so the rule is a second cue, never
+    the only one."""
+
+    def __init__(self, master):
+        super().__init__(master, height=6, highlightthickness=0, borderwidth=0, background=theme.TOKENS["surface"])
+        self._maximum = 1.0
+        self._value = 0.0
+        self._shown = 0.0  # fraction currently drawn; trails the value while tweening
+        self._tween_job = None
+        self.bind("<Configure>", lambda _event: self._redraw())
+        self.bind("<Destroy>", lambda _event: self._cancel_tween(), add="+")
+
+    def _cancel_tween(self) -> None:
+        if self._tween_job is not None:
+            try:
+                self.after_cancel(self._tween_job)
+            except tk.TclError:
+                pass
+            self._tween_job = None
+
+    def configure(self, cnf=None, **kw):
+        moved = "maximum" in kw or "value" in kw
+        if "maximum" in kw:
+            self._maximum = max(float(kw.pop("maximum")), 1.0)
+        if "value" in kw:
+            self._value = float(kw.pop("value"))
+        result = super().configure(cnf, **kw) if (cnf or kw) else None
+        if moved:
+            self._move_to(min(self._value / self._maximum, 1.0))
+        else:
+            self._redraw()
+        return result
+
+    _TWEEN_STEPS = 9  # ~140 ms at 16 ms per frame
+
+    def _move_to(self, target: float) -> None:
+        """Ease the dark segment to its new length (ease-out, ~140 ms).
+        Jumps straight there under reduced motion or while hidden."""
+        self._cancel_tween()
+        if display_prefs.reduced_motion() or not self.winfo_ismapped():
+            self._shown = target
+            self._redraw()
+            return
+        start = self._shown
+
+        def step(n: int = 1) -> None:
+            try:
+                eased = 1 - (1 - n / self._TWEEN_STEPS) ** 3
+                self._shown = start + (target - start) * eased
+                self._redraw()
+                self._tween_job = self.after(16, step, n + 1) if n < self._TWEEN_STEPS else None
+            except tk.TclError:  # widget destroyed mid-tween
+                self._tween_job = None
+
+        step()
+
+    config = configure
+
+    def __getitem__(self, key):
+        if key == "maximum":
+            return self._maximum
+        if key == "value":
+            return self._value
+        return super().__getitem__(key)
+
+    def _redraw(self) -> None:
+        self.delete("all")
+        width = max(self.winfo_width(), 1)
+        filled = round(width * self._shown)
+        self.create_rectangle(0, 0, width, 2, fill=theme.TOKENS["line"], width=0)
+        self.create_rectangle(0, 0, filled, 2, fill=theme.TOKENS["rule_ink"], width=0, tags="progress")
+        self.create_rectangle(0, 5, width, 6, fill=theme.TOKENS["line"], width=0)
+
+
+class _KeycapButton(tk.Frame):
+    """A decision button drawn as a keycap beside its word.
+
+    Keeps the parts of tk.Button the app relies on: ``invoke()``,
+    ``cget("text")`` (key and word together), activation with Space or
+    Return while focused, and a visible focus ring. It is built from
+    labels rather than an image so the keycap scales with the font at any
+    Tk zoom level."""
+
+    def __init__(
+        self, master, *, key: str, word: str, decision: str, command,
+        font_ui: str, font_mono: str, font_size: int = 10,
+        vertical_padding: int = 10, keycap_padx: int = 6,
+    ):
+        soft = theme.TOKENS[f"{decision}_soft"]
+        ink = theme.TOKENS[decision]
+        self._decision = decision
+        self._border = theme.TOKENS[f"{decision}_border"]
+        self._enabled = True
+        super().__init__(master, background=soft, takefocus=1, cursor="hand2", relief="solid", borderwidth=1)
+        self._command = command
+        self._text = f"{key}  {word}"
+        self._focused = False
+        self._armed = False
+        inner = tk.Frame(self, background=soft)
+        self._inner = inner
+        inner.pack(expand=True, pady=vertical_padding)
+        self.keycap = tk.Label(
+            inner, text=key, font=(font_mono, font_size, "bold"), background=theme.TOKENS["surface"], foreground=ink,
+            padx=keycap_padx, pady=0, highlightthickness=1, highlightbackground=self._border, highlightcolor=self._border,
+        )
+        self.keycap.pack(side="left")
+        self.label = tk.Label(inner, text=word, font=(font_ui, font_size, "bold"), background=soft, foreground=ink)
+        self.label.pack(side="left", padx=(8, 0))
+        for widget in (self, inner, self.keycap, self.label):
+            widget.bind("<Button-1>", lambda _event: self.invoke())
+        for sequence in ("<Key-space>", "<Return>"):
+            self.bind(sequence, self._on_activate_key)
+        self.bind("<FocusIn>", lambda _event: self._set_focused(True))
+        self.bind("<FocusOut>", lambda _event: self._set_focused(False))
+        self._draw_ring()
+
+    def invoke(self):
+        if self._enabled:
+            return self._command()
+        return None
+
+    def cget(self, key):
+        if key == "text":
+            return self._text
+        if key == "state":
+            return "normal" if self._enabled else "disabled"
+        if key in ("fg", "foreground"):
+            return self.label.cget("foreground")
+        if key in ("bg", "background"):
+            return super().cget("background")
+        return super().cget(key)
+
+    __getitem__ = cget
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Apply the palette's enabled or disabled decision-button colors."""
+        self._enabled = bool(enabled)
+        if not self._enabled:
+            self._focused = False
+            self._armed = False
+        background = theme.TOKENS[f"{self._decision}_soft"] if self._enabled else theme.TOKENS["surface_raised"]
+        foreground = theme.TOKENS[self._decision] if self._enabled else theme.TOKENS["muted"]
+        self._border = theme.TOKENS[f"{self._decision}_border"] if self._enabled else theme.TOKENS["line"]
+        self.configure(
+            background=background, cursor="hand2" if self._enabled else "arrow",
+            takefocus=1 if self._enabled else 0,
+            relief="solid" if self._enabled else "flat",
+        )
+        self._inner.configure(background=background)
+        self.keycap.configure(
+            background=theme.TOKENS["surface"], foreground=foreground,
+            highlightbackground=self._border, highlightcolor=self._border,
+        )
+        self.label.configure(background=background, foreground=foreground)
+        self._draw_ring()
+
+    def set_armed(self, armed: bool) -> None:
+        """Ring the button while its follow-up choice (a reason) is pending."""
+        self._armed = bool(armed and self._enabled)
+        self._draw_ring()
+
+    def _on_activate_key(self, _event):
+        self.invoke()
+        return "break"
+
+    def _set_focused(self, focused: bool) -> None:
+        self._focused = focused
+        self._draw_ring()
+
+    def _draw_ring(self) -> None:
+        active = self._enabled and (self._focused or self._armed)
+        ring = theme.TOKENS["focus"] if active else self._border
+        self.configure(
+            highlightthickness=theme.FOCUS_OUTLINE_WIDTH if active else 1,
+            highlightbackground=ring, highlightcolor=ring,
+        )
+
+
 class ScreeningWorkbenchApp:
     """Owns the Tk root and all widgets. Business logic always goes
     through the screening_workbench.* modules -- this class never touches SQL or the
@@ -64,9 +251,21 @@ class ScreeningWorkbenchApp:
 
         self.root.title("Screening Workbench -- systematic review screening")
         self.root.geometry("1280x800")
+        # Pick the palette before any widget exists: widgets read their
+        # colors when they are created.
+        theme.use_palette(display_prefs.palette())
+        typefaces.load_bundled_fonts()
         self.font_ui = theme.resolve_font(self.root, theme.FONT_UI)
         self.font_reading = theme.resolve_font(self.root, theme.FONT_READING)
+        self.font_title = theme.resolve_font(self.root, theme.FONT_TITLE)
         self.font_mono = theme.resolve_font(self.root, theme.FONT_MONO)
+        # Decision stamp state: a decision's queue advance can wait behind
+        # its 170 ms stamp; anything that acts on the record flushes it first.
+        self._pending_advance = None
+        self._stamp = None
+        self._stamp_settle_job = None
+        # Closing mid-stamp must not leave timers that fire into a dead window.
+        self.root.bind("<Destroy>", self._cancel_motion_on_close, add="+")
         self._apply_style()
 
         self._build_menu()
@@ -74,7 +273,7 @@ class ScreeningWorkbenchApp:
         self._build_header()
         self._build_status_bar()
 
-        self.section_nav = ttk.Frame(self.root, padding=(8, 0))
+        self.section_nav = ttk.Frame(self.root, padding=(8, 0), style="Drawer.TFrame")
         self.section_nav.pack(fill="x", side="top")
         self.notebook = ttk.Notebook(self.root, style="Shell.TNotebook")
         self.notebook.pack(fill="both", expand=True)
@@ -92,6 +291,7 @@ class ScreeningWorkbenchApp:
 
         self._bind_keys()
         self.refresh_all_tabs()
+        display_prefs.set_dark_title_bar(self.root, theme.CURRENT_PALETTE == "night")
 
     def _apply_style(self) -> None:
         """Apply docs/design-system.md tokens to ttk widgets. Tk's theme
@@ -108,8 +308,8 @@ class ScreeningWorkbenchApp:
 
         left = ttk.Frame(self.header_frame, style="Header.TFrame")
         left.pack(side="left")
-        ttk.Label(left, text="Screening Workbench", style="Wordmark.TLabel", font=(self.font_reading, 16, "bold")).pack(side="left")
-        ttk.Separator(left, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Label(left, text="Screening Workbench", style="Wordmark.TLabel", font=(self.font_title, 17)).pack(side="left")
+        ttk.Separator(left, orient="vertical", style="Drawer.TSeparator").pack(side="left", fill="y", padx=10)
         name_box = ttk.Frame(left, style="Header.TFrame")
         name_box.pack(side="left")
         self.project_name_label = ttk.Label(name_box, text="", style="Header.TLabel", font=(self.font_ui, 11, "bold"))
@@ -119,7 +319,7 @@ class ScreeningWorkbenchApp:
 
         right = ttk.Frame(self.header_frame, style="Header.TFrame")
         right.pack(side="right")
-        self.export_button = ttk.Button(right, text="Export package...", command=self.action_export)
+        self.export_button = ttk.Button(right, text="Export package...", command=self.action_export, style="Inverse.TButton")
         self.export_button.pack(side="right", padx=(12, 0))
         reviewer_box = ttk.Frame(right, style="Header.TFrame")
         reviewer_box.pack(side="right", padx=(12, 0))
@@ -127,8 +327,9 @@ class ScreeningWorkbenchApp:
         ttk.Label(reviewer_box, text=f"Reviewer {self.reviewer_id}", style="Header.TLabel").pack(anchor="e")
         ttk.Label(reviewer_box, text=role, style="Status.TLabel").pack(anchor="e")
         self.blind_chip_label = tk.Label(
-            right, text="", font=(self.font_ui, 9, "bold"), padx=10, pady=4,
-            background=theme.TOKENS["info_soft"], foreground=theme.TOKENS["info"], relief="solid", borderwidth=1,
+            right, text="", font=(self.font_ui, 9, "bold"), padx=10, pady=4, relief="flat", borderwidth=0,
+            background=theme.TOKENS["drawer"], foreground=theme.TOKENS["drawer_muted"], highlightthickness=1,
+            highlightbackground=theme.TOKENS["drawer_muted"], highlightcolor=theme.TOKENS["drawer_muted"],
         )
         self.blind_chip_label.pack(side="right")
 
@@ -140,15 +341,19 @@ class ScreeningWorkbenchApp:
         stage = info["review_type"] or "Review"
         self.project_stage_label.config(text=f"{stage} \u00b7 Title/abstract stage \u00b7 {batch_note}")
 
+        # On the drawer: ON is outlined with the highlighter (it changes what
+        # the reviewer may see); OFF is quiet. Neither borrows decision colors.
         if roles.is_blind(self.conn):
             self.blind_chip_label.config(
                 text="Blind screening: ON · others' decisions hidden",
-                background=theme.TOKENS["info_soft"], foreground=theme.TOKENS["info"],
+                background=theme.TOKENS["drawer"], foreground=theme.TOKENS["drawer_ink"],
+                highlightbackground=theme.TOKENS["signal"], highlightcolor=theme.TOKENS["signal"],
             )
         else:
             self.blind_chip_label.config(
                 text="Blind screening: OFF",
-                background=theme.TOKENS["maybe_soft"], foreground=theme.TOKENS["maybe"],
+                background=theme.TOKENS["drawer"], foreground=theme.TOKENS["drawer_muted"],
+                highlightbackground=theme.TOKENS["drawer_muted"], highlightcolor=theme.TOKENS["drawer_muted"],
             )
 
     # ---- status bar (UI reference target §13-14) ----
@@ -181,6 +386,7 @@ class ScreeningWorkbenchApp:
         self.status_message_label.config(text=text)
 
     def refresh_all_tabs(self) -> None:
+        self._flush_pending_advance()
         self._refresh_header()
         self._refresh_batch_combo()
         self._refresh_facet_options()
@@ -195,6 +401,9 @@ class ScreeningWorkbenchApp:
         self._refresh_studies_tab()
         self._refresh_prisma_tab()
         self._refresh_nav_badges()
+        # Refreshes can add widgets (empty-state hints, reason rows);
+        # restyle any that landed on a card with the canvas background.
+        theme.match_surface_backgrounds(self.root)
 
     def _refresh_nav_badges(self) -> None:
         """Section-nav tab labels carry a live count (UI reference
@@ -228,7 +437,15 @@ class ScreeningWorkbenchApp:
         }
         for index, key in enumerate(self._tab_ids):
             count = badge_values[key]
-            self.section_nav_badges[key].configure(text=count if count != "LOCKED" else "LOCK")
+            if count == 0:
+                badge_style = "CountBadgeZero.TLabel"
+            elif key in ("conflicts", "duplicates") and count != "LOCKED":
+                badge_style = "CountBadgeAttention.TLabel"
+            else:
+                badge_style = "CountBadge.TLabel"
+            self.section_nav_badges[key].configure(
+                text=count if count != "LOCKED" else "LOCK", style=badge_style,
+            )
             base_title = self.section_nav_buttons[key].cget("text")
             self.notebook.tab(index, text=f"{base_title}  ({count})" if count != "LOCKED" else f"{base_title}  · LOCKED")
 
@@ -268,6 +485,23 @@ class ScreeningWorkbenchApp:
         view_menu.add_command(label="Full-text", command=lambda: self._select_section("fulltext"))
         view_menu.add_command(label="Studies", command=lambda: self._select_section("studies"))
         view_menu.add_command(label="PRISMA & audit", command=lambda: self._select_section("prisma"))
+        view_menu.add_separator()
+        self.reduce_motion_var = tk.BooleanVar(master=self.root, value=display_prefs.reduced_motion())
+        view_menu.add_checkbutton(
+            label="Reduce motion", variable=self.reduce_motion_var,
+            command=lambda: display_prefs.save_reduced_motion(self.reduce_motion_var.get()),
+        )
+        theme_menu = tk.Menu(view_menu, tearoff=0)
+        self.theme_choice_var = tk.StringVar(master=self.root, value=display_prefs.saved_theme())
+        for value, label in (
+            ("system", "Match Windows"),
+            ("light", theme.PALETTE_LABELS["light"]),
+            ("night", theme.PALETTE_LABELS["night"]),
+        ):
+            theme_menu.add_radiobutton(
+                label=label, value=value, variable=self.theme_choice_var, command=self._save_theme_choice,
+            )
+        view_menu.add_cascade(label="Theme", menu=theme_menu)
         menubar.add_cascade(label="View", menu=view_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -278,7 +512,7 @@ class ScreeningWorkbenchApp:
         self.menubar = menubar
 
     def _build_menubar_chrome(self) -> None:
-        self.menubar_frame = ttk.Frame(self.root, padding=(8, 2))
+        self.menubar_frame = ttk.Frame(self.root, padding=(8, 4, 8, 0), style="Drawer.TFrame")
         self.menubar_frame.pack(fill="x", side="top")
         self.menubar_buttons = []
         last_index = self.menubar.index("end")
@@ -297,21 +531,28 @@ class ScreeningWorkbenchApp:
         """Render seven reference-shell section buttons and live count badges."""
         self.section_nav_buttons: dict[str, ttk.Button] = {}
         self.section_nav_badges: dict[str, ttk.Label] = {}
+        self.section_nav_underlines: dict[str, tk.Frame] = {}
         for key, title in zip(self._tab_ids, (
             "Screening", "Maybe re-review", "Duplicates", "Conflicts",
             "Full-text", "Studies", "PRISMA & audit",
         )):
-            item = ttk.Frame(self.section_nav, padding=(2, 2))
-            item.pack(side="left")
+            item = ttk.Frame(self.section_nav, padding=(2, 2, 2, 0), style="Drawer.TFrame")
+            item.pack(side="left", padx=(0, 4))
+            row = ttk.Frame(item, style="Drawer.TFrame")
+            row.pack(side="top")
             button = ttk.Button(
-                item, text=title, style="Section.TButton",
+                row, text=title, style="Section.TButton",
                 command=lambda section=key: self._select_section(section),
             )
             button.pack(side="left")
             self.section_nav_buttons[key] = button
-            badge = ttk.Label(item, text="0", style="CountBadge.TLabel", padding=(5, 2))
+            badge = ttk.Label(row, text="0", style="CountBadgeZero.TLabel", padding=(5, 2))
             badge.pack(side="left", padx=(2, 4))
             self.section_nav_badges[key] = badge
+            # The active section is marked by a highlighter rule, not a fill.
+            underline = tk.Frame(item, height=3, background=theme.TOKENS["drawer"], borderwidth=0)
+            underline.pack(side="top", fill="x")
+            self.section_nav_underlines[key] = underline
         self.notebook.bind("<<NotebookTabChanged>>", self._sync_section_nav)
         self._sync_section_nav()
 
@@ -322,11 +563,25 @@ class ScreeningWorkbenchApp:
     def _sync_section_nav(self, _event=None) -> None:
         if not hasattr(self, "section_nav_buttons"):
             return
+        self._flush_pending_advance()
         current = self.notebook.index("current")
         for index, key in enumerate(self._tab_ids):
             self.section_nav_buttons[key].configure(
                 style="ActiveSection.TButton" if index == current else "Section.TButton"
             )
+            self.section_nav_underlines[key].configure(
+                background=theme.TOKENS["signal"] if index == current else theme.TOKENS["drawer"]
+            )
+
+    def _save_theme_choice(self) -> None:
+        """Save View > Theme. Widgets take their colors when built, so the
+        new palette applies on the next start rather than mid-session."""
+        choice = self.theme_choice_var.get()
+        label = "Match Windows" if choice == "system" else theme.PALETTE_LABELS[choice]
+        if display_prefs.save_theme(choice):
+            self._set_status(f"Theme set to {label}. Restart Screening Workbench to apply it.")
+        else:
+            self._set_status("Could not save the theme setting; the current theme stays.")
 
     def _show_keyboard_shortcuts(self) -> None:
         messagebox.showinfo(
@@ -361,14 +616,14 @@ class ScreeningWorkbenchApp:
                 row=row, column=1, sticky="w", padx=8, pady=3,
             )
             proposal_value = proposal.canonical_field if proposal.canonical_field in CSV_MAPPING_FIELDS else ""
-            variable = tk.StringVar(value=proposal_value or CSV_MAPPING_CHOICES[0])
+            variable = tk.StringVar(master=dialog, value=proposal_value or CSV_MAPPING_CHOICES[0])
             variables.append(variable)
             ttk.Combobox(
                 dialog, textvariable=variable, values=CSV_MAPPING_CHOICES,
                 state="readonly", width=16,
             ).grid(row=row, column=2, sticky="ew", padx=8, pady=3)
 
-        warning = tk.StringVar(value="")
+        warning = tk.StringVar(master=dialog, value="")
         warning_label = ttk.Label(dialog, textvariable=warning, foreground=theme.TOKENS["exclude"], wraplength=760)
         warning_label.grid(row=len(variables) + 2, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 0))
 
@@ -778,7 +1033,7 @@ class ScreeningWorkbenchApp:
         self.screen_batch_combo.pack(side="left", padx=(4, 12))
         self._screen_batch_ids: list[str | None] = [None]  # index 0 = "All batches"
 
-        self.screen_undecided_only_var = tk.BooleanVar(value=True)
+        self.screen_undecided_only_var = tk.BooleanVar(master=self.root, value=True)
         ttk.Checkbutton(
             filter_row2, text="Undecided only (default)", variable=self.screen_undecided_only_var,
             command=self._apply_screening_filter,
@@ -797,11 +1052,13 @@ class ScreeningWorkbenchApp:
         for column, weight, minimum in ((0, 280, 280), (1, 656, 420), (2, 296, 260)):
             self.screen_body.columnconfigure(column, weight=weight, minsize=minimum, uniform="screen-cards")
         self.screen_body.rowconfigure(0, weight=1)
-        self.screen_queue_card = ttk.Frame(self.screen_body, padding=12, style="Card.TFrame")
+        # Direction 02: the record card is the one raised object; the queue
+        # and support columns sit flat on the desk beside it.
+        self.screen_queue_card = ttk.Frame(self.screen_body, padding=(0, 12, 4, 12), style="Desk.TFrame")
         self.screen_queue_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         self.screen_record_card = ttk.Frame(self.screen_body, padding=12, style="Card.TFrame")
         self.screen_record_card.grid(row=0, column=1, sticky="nsew", padx=4)
-        self.screen_support_card = ttk.Frame(self.screen_body, padding=12, style="Card.TFrame")
+        self.screen_support_card = ttk.Frame(self.screen_body, padding=(4, 12, 0, 12), style="Desk.TFrame")
         self.screen_support_card.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
 
         # Left column: upcoming-queue list (UI reference target §5) +
@@ -833,7 +1090,8 @@ class ScreeningWorkbenchApp:
             style="Queue.Treeview",
         )
         self.queue_list.column("#0", width=254, anchor="w")
-        self.queue_list.tag_configure("current", background=theme.TOKENS["accent_soft"], foreground=theme.TOKENS["accent"])
+        # "Now" is the highlighter; selection keeps accent-soft, so the two stay distinct.
+        self.queue_list.tag_configure("current", background=theme.TOKENS["signal_soft"], foreground=theme.TOKENS["ink"])
         queue_scrollbar = ttk.Scrollbar(queue_list_frame, orient="vertical", command=self.queue_list.yview)
         self.queue_list.configure(yscrollcommand=queue_scrollbar.set)
         self.queue_list.pack(side="left", fill="both", expand=True)
@@ -863,25 +1121,28 @@ class ScreeningWorkbenchApp:
         record_inner = ttk.Frame(self.record_frame, padding=12)
         record_inner.pack(fill="both", expand=True)
 
-        self.position_label = ttk.Label(record_inner, text="", font=(self.font_ui, 9), foreground=theme.TOKENS["muted"])
+        # Call-number strip: record/batch position in mono over the card's
+        # double rule, whose dark segment is the progress through the queue.
+        self.position_label = ttk.Label(record_inner, text="", font=(self.font_mono, 9), foreground=theme.TOKENS["muted"])
         self.position_label.pack(anchor="w")
 
-        self.position_progress = ttk.Progressbar(record_inner, orient="horizontal", mode="determinate", length=200)
-        self.position_progress.pack(anchor="w", pady=(2, 0))
+        self.position_progress = _CallNumberRule(record_inner)
+        self.position_progress.pack(fill="x", pady=(6, 0))
 
-        self.title_label = ttk.Label(record_inner, text="", font=(self.font_reading, 15, "bold"), wraplength=560)
-        self.title_label.pack(anchor="w", pady=(4, 4))
+        self.title_label = ttk.Label(record_inner, text="", font=(self.font_title, 16), wraplength=560)
+        self.title_label.pack(anchor="w", pady=(12, 4))
 
-        self.meta_label = ttk.Label(record_inner, text="", font=(self.font_ui, 10))
+        self.meta_label = ttk.Label(record_inner, text="", font=(self.font_ui, 10), foreground=theme.TOKENS["muted"])
         self.meta_label.pack(anchor="w")
 
         abstract_frame = ttk.Frame(record_inner)
         abstract_frame.pack(fill="both", expand=True, pady=(8, 8))
+        # The abstract reads on the card itself: no inner box, open leading.
         self.abstract_text = tk.Text(
-            abstract_frame, height=7, wrap="word", font=(self.font_reading, 11),
+            abstract_frame, height=7, wrap="word", font=(self.font_reading, 12),
             background=theme.TOKENS["surface"], foreground=theme.TOKENS["ink"], insertbackground=theme.TOKENS["ink"],
             selectbackground=theme.TOKENS["accent_soft"], selectforeground=theme.TOKENS["ink"],
-            highlightthickness=1, highlightbackground=theme.TOKENS["line"],
+            highlightthickness=0, relief="flat", borderwidth=0, spacing2=4, spacing3=8,
         )
         abstract_scrollbar = ttk.Scrollbar(abstract_frame, orient="vertical", command=self.abstract_text.yview)
         self.abstract_text.config(yscrollcommand=abstract_scrollbar.set)
@@ -890,7 +1151,9 @@ class ScreeningWorkbenchApp:
         # UI reference target §8: structured-abstract section headers
         # (BACKGROUND/METHODS/RESULTS/CONCLUSIONS) rendered bold, not
         # plain text indistinguishable from the body.
-        self.abstract_text.tag_configure("section-header", font=(self.font_reading, 11, "bold"))
+        self.abstract_text.tag_configure("section-header", font=(self.font_reading, 12, "bold"))
+        # Search matches get the highlighter, the way a screener marks a PDF.
+        self.abstract_text.tag_configure("hit", background=theme.TOKENS["signal"], foreground=theme.TOKENS["on_signal"])
         self.abstract_text.config(state="disabled")
         # The record pane's focus ring tracks this Text widget's focus,
         # since it's the natural tab-stop inside the pane.
@@ -902,45 +1165,53 @@ class ScreeningWorkbenchApp:
         # semantic fill so color is never the only signal (label text
         # carries the meaning too).
         self.primary_decision_bar = ttk.Frame(record_inner)
-        self.primary_decision_bar.pack(fill="x", pady=(0, 2))
-        self.include_button = tk.Button(
-            self.primary_decision_bar, text="I  Include", command=lambda: self._decide("include"),
-            bg=theme.TOKENS["include_soft"], fg=theme.TOKENS["include"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=8,
+        # Each decision shows its key as a keycap beside the word; the soft
+        # fill, border and word keep the semantic color, never color alone.
+        decision_fonts = {"font_ui": self.font_ui, "font_mono": self.font_mono}
+        self.include_button = _KeycapButton(
+            self.primary_decision_bar, key="I", word="Include", decision="include",
+            command=lambda: self._decide("include"), **decision_fonts,
         )
-        self.include_button.pack(side="left", fill="x", expand=True, padx=(0, 4))
-        self.maybe_button = tk.Button(
-            self.primary_decision_bar, text="M  ? Maybe", command=lambda: self._decide("maybe"),
-            bg=theme.TOKENS["maybe_soft"], fg=theme.TOKENS["maybe"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=8,
+        self.include_button.grid(row=0, column=0, sticky="ew")
+        self.maybe_button = _KeycapButton(
+            self.primary_decision_bar, key="M", word="Maybe", decision="maybe",
+            command=lambda: self._decide("maybe"), **decision_fonts,
         )
-        self.maybe_button.pack(side="left", fill="x", expand=True, padx=4)
-        self.exclude_button = tk.Button(
-            self.primary_decision_bar, text="E  Exclude...", command=lambda: self._decide("exclude"),
-            bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=8,
+        self.maybe_button.grid(row=0, column=2, sticky="ew")
+        self.exclude_button = _KeycapButton(
+            self.primary_decision_bar, key="E", word="Exclude...", decision="exclude",
+            command=lambda: self._decide("exclude"), **decision_fonts,
         )
-        self.exclude_button.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.exclude_button.grid(row=0, column=4, sticky="ew")
+        # Equal widths whatever each word measures; the gaps are fixed spacer
+        # columns so the outer buttons stay flush with the card edges.
+        for column in (0, 2, 4):
+            self.primary_decision_bar.columnconfigure(column, weight=1, uniform="decision")
+        for column in (1, 3):
+            self.primary_decision_bar.columnconfigure(column, minsize=8)
 
         secondary_bar = ttk.Frame(record_inner)
-        secondary_bar.pack(fill="x", pady=(0, 2))
-        self.undo_button = tk.Button(
-            secondary_bar, text="Ctrl+Z  Undo", command=self._undo_last_decision,
-            relief="solid", borderwidth=1, font=(self.font_ui, 9), padx=8, pady=4,
+        self.undo_button = ttk.Button(
+            secondary_bar, text="Undo  Ctrl+Z", command=self._undo_last_decision, style="Quiet.TButton",
         )
         self.undo_button.pack(side="left")
-        self.skip_button = tk.Button(
-            secondary_bar, text="J  Skip", command=self._skip_current,
-            relief="solid", borderwidth=1, font=(self.font_ui, 9), padx=8, pady=4,
+        self.skip_button = ttk.Button(
+            secondary_bar, text="Skip  J", command=self._skip_current, style="Quiet.TButton",
         )
         self.skip_button.pack(side="left", padx=(6, 0))
 
-        legend = ttk.Label(
+        legend = self.screen_key_legend = ttk.Label(
             record_inner,
             text="I = Include   M = Maybe   E = Exclude, then 1-7 for a reason   J = Skip   K = Prev   Ctrl+Z = Undo",
             font=(self.font_ui, 9),
         )
-        legend.pack(anchor="w")
+        # Decision row, quiet actions and key legend are packed against the
+        # card's bottom edge ahead of the abstract, so a long abstract (or
+        # the taller bundled faces) shrinks the reading area, never the
+        # controls.
+        legend.pack(side="bottom", anchor="w", before=abstract_frame)
+        secondary_bar.pack(side="bottom", fill="x", pady=(0, 2), before=abstract_frame)
+        self.primary_decision_bar.pack(side="bottom", fill="x", pady=(0, 2), before=abstract_frame)
 
         # Right column: always-visible exclusion-reasons reference (UI
         # reference target §10) above the recent-decisions panel (§11).
@@ -948,12 +1219,24 @@ class ScreeningWorkbenchApp:
         side_panel.pack(fill="both", expand=True)
         ttk.Label(side_panel, text="EXCLUSION REASONS", font=(self.font_ui, 9, "bold")).pack(anchor="w")
         ttk.Label(side_panel, text="E, then 1-7", font=(self.font_ui, 9), foreground=theme.TOKENS["muted"]).pack(anchor="w")
+        self.reason_keycaps: list[tk.Label] = []
+        self.reason_rows: list[ttk.Frame] = []
+        self.reason_labels: list[ttk.Label] = []
+        self.exclusion_reasons_armed = False
         for i, reason_text in enumerate(screening.EXCLUSION_REASONS, start=1):
             row = ttk.Frame(side_panel)
             row.pack(fill="x", pady=1)
-            tk.Label(row, text=str(i), width=2, relief="solid", borderwidth=1, font=(self.font_mono, 8),
-                     bg=theme.TOKENS["surface"], fg=theme.TOKENS["ink"]).pack(side="left")
-            ttk.Label(row, text=reason_text, font=(self.font_ui, 9), wraplength=164, justify="left").pack(side="left", padx=(6, 0), fill="x", expand=True)
+            self.reason_rows.append(row)
+            keycap = tk.Label(
+                row, text=str(i), width=2, relief="flat", borderwidth=0, font=(self.font_mono, 9, "bold"),
+                bg=theme.TOKENS["surface"], fg=theme.TOKENS["ink"], highlightthickness=1,
+                highlightbackground=theme.TOKENS["line_strong"], highlightcolor=theme.TOKENS["line_strong"],
+            )
+            keycap.pack(side="left")
+            self.reason_keycaps.append(keycap)
+            reason_label = ttk.Label(row, text=reason_text, font=(self.font_ui, 9), wraplength=164, justify="left")
+            reason_label.pack(side="left", padx=(6, 0), fill="x", expand=True)
+            self.reason_labels.append(reason_label)
 
         ttk.Separator(side_panel, orient="horizontal").pack(fill="x", pady=8)
 
@@ -1024,6 +1307,7 @@ class ScreeningWorkbenchApp:
         self.screen_journal_entry.config(values=journals)
 
     def _apply_screening_filter(self) -> None:
+        self._flush_pending_advance()
         self._screen_search = self.screen_search_entry.get().strip() or None
         self._screen_year = self.screen_year_entry.get().strip() or None
         self._screen_journal = self.screen_journal_entry.get().strip() or None
@@ -1032,6 +1316,7 @@ class ScreeningWorkbenchApp:
         self._load_next_undecided()
 
     def _clear_screening_filter(self) -> None:
+        self._flush_pending_advance()
         self.screen_search_entry.delete(0, "end")
         self.screen_year_entry.delete(0, "end")
         self.screen_journal_entry.delete(0, "end")
@@ -1044,17 +1329,26 @@ class ScreeningWorkbenchApp:
         self._load_next_undecided()
 
     def _bind_keys(self) -> None:
-        self.root.bind("<Key-i>", lambda e: None if self._is_typing_in_a_text_field() else self._decide("include"))
-        self.root.bind("<Key-m>", lambda e: None if self._is_typing_in_a_text_field() else self._decide("maybe"))
-        self.root.bind("<Key-e>", lambda e: None if self._is_typing_in_a_text_field() else self._decide("exclude"))
-        self.root.bind("<Key-j>", lambda e: None if self._is_typing_in_a_text_field() else self._skip_current(e))
-        self.root.bind("<Key-k>", lambda e: None if self._is_typing_in_a_text_field() else self._navigate_previous(e))
-        self.root.bind("<Key-slash>", self._focus_search)
+        def unless_typing(action):
+            # event.widget is the widget the keystroke was delivered to, so the
+            # guard never depends on querying OS keyboard focus afterwards.
+            return lambda event: None if self._is_typing_in_a_text_field(getattr(event, "widget", None)) else action(event)
+
+        self._shortcut_handlers = {
+            "<Key-i>": unless_typing(lambda _event: self._decide("include")),
+            "<Key-m>": unless_typing(lambda _event: self._decide("maybe")),
+            "<Key-e>": unless_typing(lambda _event: self._decide("exclude")),
+            "<Key-j>": unless_typing(self._skip_current),
+            "<Key-k>": unless_typing(self._navigate_previous),
+            "<Key-slash>": self._focus_search,
+        }
+        for sequence, handler in self._shortcut_handlers.items():
+            self.root.bind(sequence, handler)
         self.root.bind("<Control-z>", self._undo_last_decision)
 
     _TEXT_INPUT_CLASSES = ("Entry", "TEntry", "TCombobox", "Text", "Spinbox")
 
-    def _is_typing_in_a_text_field(self) -> bool:
+    def _is_typing_in_a_text_field(self, widget=None) -> bool:
         """Guard for every single-key screening shortcut (i/m/e/j/k and /):
         without this, typing a search term like "intervention" into any
         Entry/Combobox/Text widget would ALSO fire _decide("include")
@@ -1069,8 +1363,18 @@ class ScreeningWorkbenchApp:
         keyboard-focus target for the shortcuts (spec: a visible focus
         ring while the shortcuts are live) -- it must NOT count as "a
         text field the user is typing into", or the shortcuts would stop
-        working in their primary intended context."""
-        widget = self.root.focus_get()
+        working in their primary intended context.
+
+        ``widget`` is the widget a keystroke was delivered to (a key event's
+        ``event.widget``, possibly as a Tk path name); without one, the
+        current keyboard focus is used."""
+        if isinstance(widget, str):
+            try:
+                widget = self.root.nametowidget(widget)
+            except KeyError:
+                widget = None
+        if widget is None:
+            widget = self.root.focus_get()
         if widget is None:
             return False
         if widget is self.abstract_text:
@@ -1081,7 +1385,7 @@ class ScreeningWorkbenchApp:
         """'/' jumps to the search field (UI reference target §4) --
         but only when focus isn't already in a text field, so typing a
         literal '/' into an existing search term still works normally."""
-        if self._is_typing_in_a_text_field():
+        if self._is_typing_in_a_text_field(getattr(event, "widget", None)):
             return None
         self.screen_search_entry.focus_set()
         return "break"
@@ -1169,7 +1473,7 @@ class ScreeningWorkbenchApp:
             # current row, since the accent-soft fill alone (--accent-soft
             # the soft accent fill from the theme is too close to white to read reliably -- color is
             # never the only signal here either.
-            prefix = "\u25b6 Now  " if is_current else ""
+            prefix = "\u25b8 Now  " if is_current else ""
             self.queue_list.insert(
                 "", "end", iid=q["occurrence_id"],
                 text=f"{prefix}{title}\n{meta}",
@@ -1180,6 +1484,7 @@ class ScreeningWorkbenchApp:
         """Jump directly to a clicked queue entry instead of only the
         next-undecided record (UI reference target §5: a browsable
         upcoming list, not just bulk-select scaffolding)."""
+        self._flush_pending_advance()
         occurrence_id = self.queue_list.identify_row(event.y)
         if not occurrence_id or occurrence_id not in self._queue_occurrence_ids:
             return
@@ -1215,6 +1520,7 @@ class ScreeningWorkbenchApp:
         """J: move to the next record in the queue without casting a
         vote (UI reference target §9/§14). Does not reorder or hide the
         skipped record -- it is simply not the current one anymore."""
+        self._flush_pending_advance()
         if self.current_occurrence_id not in self._queue_occurrence_ids:
             return
         idx = self._queue_occurrence_ids.index(self.current_occurrence_id)
@@ -1223,12 +1529,14 @@ class ScreeningWorkbenchApp:
     def _navigate_previous(self, _event=None) -> None:
         """K: move to the previous record in the queue (UI reference
         target §14)."""
+        self._flush_pending_advance()
         if self.current_occurrence_id not in self._queue_occurrence_ids:
             return
         idx = self._queue_occurrence_ids.index(self.current_occurrence_id)
         self._jump_to_queue_index(idx - 1)
 
     def _bulk_decide(self, decision: str) -> None:
+        self._flush_pending_advance()
         sel = self.queue_list.selection()
         if not sel:
             messagebox.showerror("Nothing selected", "Select one or more records in the queue first.")
@@ -1254,7 +1562,7 @@ class ScreeningWorkbenchApp:
         doi = fields.get("doi")
         if doi:
             meta_parts.append(f"DOI: {doi}")
-        meta = " | ".join(x for x in meta_parts if x)
+        meta = " \u00b7 ".join(x for x in meta_parts if x)
         self.meta_label.config(text=meta)
         self._set_abstract(fields.get("abstract") or "")
 
@@ -1266,6 +1574,18 @@ class ScreeningWorkbenchApp:
         self.abstract_text.config(state="normal")
         self.abstract_text.delete("1.0", "end")
         self.abstract_text.insert("1.0", text)
+        term = getattr(self, "_screen_search", None)
+        if term:
+            # Display-only highlight of the active "/" search; changes no data.
+            count = tk.IntVar(master=self.abstract_text)  # this root's interpreter, not tk's default root
+            start = "1.0"
+            while True:
+                start = self.abstract_text.search(term, start, stopindex="end", nocase=True, count=count)
+                if not start or not count.get():
+                    break
+                end = f"{start}+{count.get()}c"
+                self.abstract_text.tag_add("hit", start, end)
+                start = end
         for lineno, line in enumerate(text.split("\n"), start=1):
             stripped = line.strip().rstrip(":").upper()
             if stripped in self._ABSTRACT_SECTION_HEADERS:
@@ -1301,8 +1621,9 @@ class ScreeningWorkbenchApp:
         """Ctrl+Z: retract this reviewer's most recent decision (UI
         reference target §9/§11). Never touches another reviewer's
         votes -- undo_last_vote is scoped to self.reviewer_id."""
-        if self._is_typing_in_a_text_field():
+        if self._is_typing_in_a_text_field(getattr(_event, "widget", None)):
             return None
+        self._flush_pending_advance()
         undone = screening.undo_last_vote(self.conn, self.reviewer_id)
         if undone is None:
             self._set_status("Nothing to undo.")
@@ -1318,6 +1639,20 @@ class ScreeningWorkbenchApp:
         self._refresh_prisma_tab()
         self._refresh_nav_badges()
         return "break"
+
+    def _set_exclusion_armed(self, armed: bool) -> None:
+        """While an Exclude waits for its reason, the side-panel reason list
+        is the thing the next key (1-7) picks from: tint it, color its keys
+        with the exclude hue, and ring the Exclude button. Display only."""
+        self.exclusion_reasons_armed = armed
+        row_style, label_style = ("ArmedReason.TFrame", "ArmedReason.TLabel") if armed else ("TFrame", "TLabel")
+        key_color = theme.TOKENS["exclude"] if armed else theme.TOKENS["ink"]
+        key_border = theme.TOKENS["exclude_border"] if armed else theme.TOKENS["line_strong"]
+        for row, label, keycap in zip(self.reason_rows, self.reason_labels, self.reason_keycaps):
+            row.configure(style=row_style)
+            label.configure(style=label_style)
+            keycap.configure(foreground=key_color, highlightbackground=key_border, highlightcolor=key_border)
+        self.exclude_button.set_armed(armed)
 
     def _prompt_exclusion_reason(self) -> str | None:
         """Numbered 1-7 exclusion-reason picker (UI reference target
@@ -1338,8 +1673,11 @@ class ScreeningWorkbenchApp:
         for i, reason_text in enumerate(screening.EXCLUSION_REASONS, start=1):
             row = ttk.Frame(dialog)
             row.pack(fill="x", padx=12, pady=2)
-            tk.Label(row, text=str(i), width=2, relief="solid", borderwidth=1, font=(self.font_mono, 9),
-                     bg=theme.TOKENS["surface"], fg=theme.TOKENS["ink"]).pack(side="left")
+            tk.Label(
+                row, text=str(i), width=2, relief="flat", borderwidth=0, font=(self.font_mono, 9, "bold"),
+                bg=theme.TOKENS["surface"], fg=theme.TOKENS["exclude"], highlightthickness=1,
+                highlightbackground=theme.TOKENS["exclude_border"], highlightcolor=theme.TOKENS["exclude_border"],
+            ).pack(side="left")
             ttk.Label(row, text=reason_text, wraplength=650).pack(side="left", padx=(8, 0), fill="x", expand=True)
 
         def pick(n: int) -> None:
@@ -1358,11 +1696,18 @@ class ScreeningWorkbenchApp:
         return result["reason"]
 
     def _decide(self, decision: str) -> None:
+        # A key pressed under the previous stamp first finishes that advance,
+        # so this decision lands on the record now on screen, never the last one.
+        self._flush_pending_advance()
         if self.current_occurrence_id is None:
             return
         reason = None
         if decision == "exclude":
-            reason = self._prompt_exclusion_reason()
+            self._set_exclusion_armed(True)
+            try:
+                reason = self._prompt_exclusion_reason()
+            finally:
+                self._set_exclusion_armed(False)
             if not reason:
                 return  # cancelled; do not record a reasonless exclude
         fields = self._load_fields(self.current_occurrence_id)
@@ -1374,6 +1719,20 @@ class ScreeningWorkbenchApp:
         reason_note = f" -- {reason}" if reason else ""
         title = fields.get("title") or self.current_occurrence_id
         self._set_status(f"Saved: {decision_word}{reason_note} ({title})")
+        # The vote is already written. The stamp is decoration on top of it.
+        # The stamp belongs to the Screening tab; anywhere else, or under
+        # reduced motion, the queue advances at once.
+        on_screening = self.notebook.index("current") == self._tab_ids.index("screening")
+        if display_prefs.reduced_motion() or not on_screening:
+            self._finish_decision()
+            return
+        self._show_decision_stamp(decision, reason)
+        self._pending_advance = self.root.after(self._STAMP_MS, self._finish_decision)
+
+    def _finish_decision(self) -> None:
+        """Advance past a saved decision and refresh what depends on it."""
+        self._pending_advance = None
+        self._clear_decision_stamp()
         self._load_next_undecided()
         self._refresh_recent_decisions()
         self._refresh_queue_list()
@@ -1382,13 +1741,86 @@ class ScreeningWorkbenchApp:
         self._refresh_prisma_tab()
         self._refresh_nav_badges()
 
+    def _flush_pending_advance(self) -> None:
+        """Finish a decision still showing its stamp, right now."""
+        if getattr(self, "_pending_advance", None) is None:
+            return
+        self.root.after_cancel(self._pending_advance)
+        self._finish_decision()
+
+    # ---- decision stamp (direction 02, R4) ----
+
+    _STAMP_MS = 170
+    _STAMP_WORDS = {"include": "INCLUDED", "maybe": "MAYBE", "exclude": "EXCLUDED"}
+
+    def _show_decision_stamp(self, decision: str, reason: str | None) -> None:
+        """A date-due style stamp over the record card: lands large and pale,
+        settles at full color 16 ms later, and is removed when the queue
+        advances. It only ever shows this reviewer's own decision."""
+        self._clear_decision_stamp()
+        canvas = tk.Canvas(
+            self.screen_record_card, width=280, height=104, background=theme.TOKENS["surface"],
+            highlightthickness=0, borderwidth=0,
+        )
+        canvas.place(relx=0.5, rely=0.45, anchor="center")
+        self._stamp = canvas
+        word = self._STAMP_WORDS[decision]
+        detail = reason.upper() if reason else None
+        self._draw_stamp(canvas, word, detail, theme.TOKENS[f"{decision}_border"], 23)
+        self._stamp_settle_job = self.root.after(
+            16, lambda: self._draw_stamp(canvas, word, detail, theme.TOKENS[decision], 20),
+        )
+
+    def _draw_stamp(self, canvas: tk.Canvas, word: str, detail: str | None, color: str, size: int) -> None:
+        self._stamp_settle_job = None
+        if self._stamp is not canvas or not canvas.winfo_exists():
+            return
+        canvas.delete("all")
+        cx, cy = 140, 52
+        cos, sin = math.cos(math.radians(7)), math.sin(math.radians(7))
+
+        def rotated(points):
+            # Tk's y axis points down: this turns the box 7 degrees counter-clockwise.
+            return [c for x, y in points for c in (cx + x * cos + y * sin, cy - x * sin + y * cos)]
+
+        half_w, half_h = 120, (32 if detail else 24)
+        for inset, width in ((0, 3), (6, 1)):
+            w, h = half_w - inset, half_h - inset
+            canvas.create_polygon(rotated([(-w, -h), (w, -h), (w, h), (-w, h)]), outline=color, fill="", width=width)
+        word_x, word_y = rotated([(0, -8 if detail else 0)])
+        canvas.create_text(word_x, word_y, text=word, angle=7, fill=color, font=(self.font_mono, size, "bold"))
+        if detail:
+            detail_x, detail_y = rotated([(0, 17)])
+            canvas.create_text(detail_x, detail_y, text=detail, angle=7, fill=color, font=(self.font_mono, 8, "bold"))
+
+    def _cancel_motion_on_close(self, event) -> None:
+        if event.widget is not self.root:
+            return
+        for job in (self._pending_advance, self._stamp_settle_job):
+            if job is not None:
+                try:
+                    self.root.after_cancel(job)
+                except tk.TclError:
+                    pass
+        self._pending_advance = None
+        self._stamp_settle_job = None
+        self._stamp = None
+
+    def _clear_decision_stamp(self) -> None:
+        if self._stamp_settle_job is not None:
+            self.root.after_cancel(self._stamp_settle_job)
+            self._stamp_settle_job = None
+        if self._stamp is not None:
+            self._stamp.destroy()
+            self._stamp = None
+
     # ---- maybe re-review tab (this reviewer's own 'maybe' decisions) ----
 
     def _build_maybe_tab(self) -> None:
         frame = ttk.Frame(self.notebook, padding=(16, 10))
         self.notebook.add(frame, text="Maybe re-review")
 
-        self.maybe_reference_state = tk.StringVar(value="")
+        self.maybe_reference_state = tk.StringVar(master=self.root, value="")
         ttk.Label(
             frame, textvariable=self.maybe_reference_state, style="SectionHeading.TLabel",
         ).pack(anchor="w")
@@ -1428,7 +1860,7 @@ class ScreeningWorkbenchApp:
         search_frame = ttk.Frame(self.maybe_queue_panel)
         search_frame.pack(fill="x", pady=(0, 4))
         ttk.Label(search_frame, text="Search:").pack(side="left")
-        self.maybe_search_var = tk.StringVar()
+        self.maybe_search_var = tk.StringVar(master=self.root)
         self.maybe_search_var.trace_add("write", lambda *a: self._on_maybe_search_changed())
         self.maybe_search_entry = ttk.Entry(search_frame, textvariable=self.maybe_search_var)
         self.maybe_search_entry.pack(side="left", fill="x", expand=True, padx=(6, 0))
@@ -1485,7 +1917,7 @@ class ScreeningWorkbenchApp:
             selectbackground=theme.TOKENS["accent_soft"], selectforeground=theme.TOKENS["ink"],
             highlightthickness=1, highlightbackground=theme.TOKENS["line"],
         )
-        self.maybe_detail_text.tag_configure("maybe_heading", font=(self.font_reading, 15, "bold"), foreground=theme.TOKENS["ink"])
+        self.maybe_detail_text.tag_configure("maybe_heading", font=(self.font_title, 15), foreground=theme.TOKENS["ink"])
         self.maybe_detail_text.tag_configure("maybe-panel-heading", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["muted"])
         self.maybe_detail_text.tag_configure("maybe_meta", font=(self.font_ui, 10), foreground=theme.TOKENS["muted"])
         self.maybe_detail_text.tag_configure("maybe_vote", font=(self.font_ui, 10, "bold"), foreground=theme.TOKENS["accent"])
@@ -1500,21 +1932,24 @@ class ScreeningWorkbenchApp:
         # TOKENS fills, same tk.Button-not-ttk pattern) rather than
         # the generic two-button bar this tab had before.
         ttk.Label(self.maybe_support_panel, text="DECISION SUPPORT", style="SectionHeading.TLabel").pack(anchor="w")
-        ttk.Label(self.maybe_support_panel, text="OWN VOTE ONLY · BLIND-SAFE", style="SectionHint.TLabel").pack(anchor="w", pady=(2, 8))
+        ttk.Label(self.maybe_support_panel, text="OWN VOTE ONLY · BLIND-SAFE", style="SectionHint.TLabel").pack(anchor="w", pady=(2, 4))
         ttk.Label(self.maybe_support_panel, text="EXCLUSION REASONS", style="SectionHint.TLabel").pack(anchor="w")
         ttk.Label(
             self.maybe_support_panel,
             text="Choosing Exclude requires exactly one project reason.",
             wraplength=255, justify="left",
-        ).pack(anchor="w", pady=(4, 8))
+        ).pack(anchor="w", pady=(2, 4))
         ttk.Label(
             self.maybe_support_panel,
             text="Use Exclude… to choose the required reason before saving.",
             wraplength=255, justify="left", foreground=theme.TOKENS["muted"],
-        ).pack(anchor="w", pady=(0, 8))
-        self.maybe_reason_var = tk.IntVar(value=0)
+        ).pack(anchor="w", pady=(0, 4))
+        self.maybe_reason_var = tk.IntVar(master=self.root, value=0)
         self.maybe_reason_buttons = []
-        ttk.Style(self.root).configure("MaybeReason.TRadiobutton", padding=(4, 1))
+        # Atkinson Hyperlegible lines run ~2px taller than Segoe UI at 9pt;
+        # zero vertical padding keeps all seven reasons and the keyboard
+        # guide inside the support card at 1280x800.
+        ttk.Style(self.root).configure("MaybeReason.TRadiobutton", padding=(4, 0))
         for index, reason_text in enumerate(screening.EXCLUSION_REASONS, start=1):
             button = ttk.Radiobutton(
                 self.maybe_support_panel, text=reason_text,
@@ -1524,7 +1959,7 @@ class ScreeningWorkbenchApp:
             button.state(["disabled"])
             button.pack(anchor="w", fill="x", pady=0)
             self.maybe_reason_buttons.append(button)
-        ttk.Label(self.maybe_support_panel, text="QUEUE BEHAVIOR", style="SectionHint.TLabel").pack(anchor="w", pady=(6, 0))
+        ttk.Label(self.maybe_support_panel, text="QUEUE BEHAVIOR", style="SectionHint.TLabel").pack(anchor="w", pady=(4, 0))
         ttk.Label(
             self.maybe_support_panel,
             text="Re-deciding updates your vote history. A final Include/Exclude removes the record from this queue.",
@@ -1551,25 +1986,25 @@ class ScreeningWorkbenchApp:
         self.maybe_keyboard_help.pack(anchor="w", pady=(2, 0))
         self.maybe_decision_bar = ttk.Frame(self.maybe_detail_panel)
         self.maybe_decision_bar.pack(fill="x", side="bottom", pady=(10, 0))
-        self.maybe_include_btn = tk.Button(
-            self.maybe_decision_bar, text="I  Include", command=lambda: self._maybe_decide("include"),
-            bg=theme.TOKENS["include_soft"], fg=theme.TOKENS["include"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=3,
+        self.maybe_include_btn = _KeycapButton(
+            self.maybe_decision_bar, key="I", word="Include", decision="include",
+            command=lambda: self._maybe_decide("include"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=3, keycap_padx=4,
         )
         self.maybe_include_btn.pack(fill="x", side="left", expand=True, padx=(0, 4))
-        self.maybe_maybe_btn = tk.Button(
-            self.maybe_decision_bar, text="M  Maybe (keep deferred)", command=lambda: self._maybe_decide("maybe"),
-            bg=theme.TOKENS["maybe_soft"], fg=theme.TOKENS["maybe"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=3,
+        self.maybe_maybe_btn = _KeycapButton(
+            self.maybe_decision_bar, key="M", word="Maybe (keep deferred)", decision="maybe",
+            command=lambda: self._maybe_decide("maybe"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=3, keycap_padx=4,
         )
         self.maybe_maybe_btn.pack(fill="x", side="left", expand=True, padx=4)
-        self.maybe_exclude_btn = tk.Button(
-            self.maybe_decision_bar, text="E  Exclude...", command=lambda: self._maybe_decide("exclude"),
-            bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 10, "bold"), padx=10, pady=3,
+        self.maybe_exclude_btn = _KeycapButton(
+            self.maybe_decision_bar, key="E", word="Exclude...", decision="exclude",
+            command=lambda: self._maybe_decide("exclude"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=3, keycap_padx=4,
         )
         self.maybe_exclude_btn.pack(fill="x", side="left", expand=True, padx=(4, 0))
-        self.maybe_exclude_btn.config(state="disabled", bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"])
+        self.maybe_exclude_btn.set_enabled(False)
         self.maybe_footer_label = ttk.Label(self.maybe_detail_panel, text="No record selected", foreground=theme.TOKENS["muted"], wraplength=600)
         self.maybe_footer_label.pack(anchor="w", side="bottom", pady=(4, 2))
         self._set_maybe_actions_available(False)
@@ -1705,21 +2140,11 @@ class ScreeningWorkbenchApp:
         for choice in self.maybe_reason_buttons:
             choice.state(["!disabled"] if has_selection else ["disabled"])
         enabled = has_selection and self.maybe_reason_var.get() > 0
-        if enabled:
-            self.maybe_exclude_btn.config(state="normal", bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"])
-        else:
-            self.maybe_exclude_btn.config(state="disabled", bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"])
+        self.maybe_exclude_btn.set_enabled(enabled)
 
     def _set_maybe_actions_available(self, available: bool) -> None:
-        for button, color, ink in (
-            (self.maybe_include_btn, "include_soft", "include"),
-            (self.maybe_maybe_btn, "maybe_soft", "maybe"),
-        ):
-            button.config(
-                state="normal" if available else "disabled",
-                bg=theme.TOKENS[color] if available else theme.TOKENS["surface_raised"],
-                fg=theme.TOKENS[ink] if available else theme.TOKENS["muted"],
-            )
+        for button in (self.maybe_include_btn, self.maybe_maybe_btn):
+            button.set_enabled(available)
 
     def _render_maybe_detail(self) -> None:
         """Items 4/5: selecting a record shows its occurrence ID and
@@ -1881,16 +2306,17 @@ class ScreeningWorkbenchApp:
 
         compare_frame = ttk.Frame(self.dup_compare_panel)
         compare_frame.pack(fill="both", expand=True)
+        # Word-wrapped, one row per occurrence under each field: long titles
+        # wrap with a hanging indent instead of pushing columns off-screen.
         self.dup_compare_text = tk.Text(
-            compare_frame, height=6, wrap="none", font=(self.font_mono, 10),
+            compare_frame, height=6, wrap="word", font=(self.font_mono, 10),
             background=theme.TOKENS["surface"], foreground=theme.TOKENS["ink"],
             selectbackground=theme.TOKENS["accent_soft"], selectforeground=theme.TOKENS["ink"],
             highlightthickness=1, highlightbackground=theme.TOKENS["line"],
         )
-        dup_compare_xscroll = self.dup_compare_xscroll = ttk.Scrollbar(compare_frame, orient="horizontal", command=self.dup_compare_text.xview)
-        self.dup_compare_text.config(xscrollcommand=dup_compare_xscroll.set)
-        dup_compare_xscroll.pack(side="bottom", fill="x")
         self.dup_compare_text.pack(fill="both", expand=True)
+        value_indent = tkfont.Font(root=self.root, font=(self.font_mono, 10)).measure("  #1  ")
+        self.dup_compare_text.tag_configure("dup_value", lmargin1=0, lmargin2=value_indent)
         self.dup_compare_text.tag_configure("dup_heading", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["muted"])
         self.dup_compare_text.tag_configure("dup_diff", background=theme.TOKENS["maybe_soft"], foreground=theme.TOKENS["ink"])
         self.dup_compare_text.tag_configure("dup_diff_label", foreground=theme.TOKENS["maybe"], font=(self.font_mono, 9, "italic"))
@@ -1899,7 +2325,7 @@ class ScreeningWorkbenchApp:
 
         survivor_frame = ttk.Frame(self.dup_resolution_panel)
         survivor_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(survivor_frame, text="Keep as survivor:").pack(side="left")
+        ttk.Label(survivor_frame, text="Keep as survivor:").pack(anchor="w", pady=(0, 4))
         self.dup_survivor_list = tk.Listbox(
             survivor_frame, height=2, exportselection=False,
             background=theme.TOKENS["surface"], foreground=theme.TOKENS["ink"],
@@ -1908,7 +2334,7 @@ class ScreeningWorkbenchApp:
         )
         self.dup_survivor_list.bind("<FocusIn>", lambda _event: self.dup_survivor_list.configure(**theme.focus_outline_options(True)))
         self.dup_survivor_list.bind("<FocusOut>", lambda _event: self.dup_survivor_list.configure(**theme.focus_outline_options(False)))
-        self.dup_survivor_list.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        self.dup_survivor_list.pack(fill="x")
 
         btns = ttk.Frame(self.dup_resolution_panel)
         btns.pack(fill="x")
@@ -1998,7 +2424,7 @@ class ScreeningWorkbenchApp:
         ).fetchone()
         if not row:
             return "(provenance unavailable)"
-        return f"Batch {row['batch_id'][:12]}... · row {row['locator']} · source {row['source_name']}"
+        return f"Batch {row['batch_id'][:12]}... · {row['locator']} · source {row['source_name']}"
 
     _DUP_FIELD_LABELS = [
         ("title", "Title"), ("authors", "Authors"), ("year", "Year"),
@@ -2034,11 +2460,6 @@ class ScreeningWorkbenchApp:
             values = [v or "(empty)" for v in values]
             field_rows.append((label, values, len(set(values)) > 1))
 
-        col_width = max(
-            [len(occ_id) for occ_id in occ_ids]
-            + [len(v) for _, values, _ in field_rows for v in values]
-        ) + 3
-
         t.insert("end", "MATCH EVIDENCE\n", "dup_heading")
         for pair in cluster["pairs"]:
             reason_labels = {
@@ -2054,24 +2475,23 @@ class ScreeningWorkbenchApp:
         t.insert("end", "\n")
 
         t.insert("end", "OCCURRENCES AND PROVENANCE\n", "dup_heading")
-        for occ_id in occ_ids:
-            t.insert("end", f"  {occ_id}\n    {self._dup_provenance(occ_id)}\n")
+        for number, occ_id in enumerate(occ_ids, start=1):
+            t.insert("end", f"  #{number}  {occ_id}\n", "dup_value")
+            t.insert("end", f"      {self._dup_provenance(occ_id)}\n", "dup_value")
         t.insert("end", "\n")
 
         t.insert("end", "FIELD COMPARISON\n", "dup_heading")
-        header = "FIELD".ljust(12) + "".join(occ_id.ljust(col_width) for occ_id in occ_ids)
-        t.insert("end", header + "\n")
         for label, values, differs in field_rows:
-            t.insert("end", label.ljust(12))
-            for value in values:
-                cell = value.ljust(col_width)
-                start = t.index("end")
-                t.insert("end", cell)
+            t.insert("end", f"{label}\n")
+            for number, value in enumerate(values, start=1):
+                t.insert("end", f"  #{number}  ", "dup_value")
+                start = t.index("end - 1 char")
+                t.insert("end", value, "dup_value")
                 if differs:
-                    t.tag_add("dup_diff", start, t.index("end"))
-            t.insert("end", "\n")
+                    t.tag_add("dup_diff", start, t.index("end - 1 char"))
+                t.insert("end", "\n")
             if differs:
-                t.insert("end", " " * 12 + "^ Difference -- raw source values shown unchanged above\n", "dup_diff_label")
+                t.insert("end", "      ^ Difference -- raw source values shown unchanged above\n", ("dup_diff_label", "dup_value"))
         t.insert("end", "\n")
 
         for occ_id in occ_ids:
@@ -2079,6 +2499,7 @@ class ScreeningWorkbenchApp:
             fields = cluster["members"][occ_id]
             meta = f"{fields.get('title') or '(no title)'} ({fields.get('year') or '?'}, {fields.get('doi') or 'no DOI'})  -- {occ_id}"
             self.dup_survivor_list.insert("end", meta)
+        self.dup_survivor_list.configure(height=min(5, max(2, len(occ_ids))))
         self.dup_survivor_list.selection_set(0)
         t.config(state="disabled")
         self._set_dup_actions_available(True)
@@ -2223,7 +2644,7 @@ class ScreeningWorkbenchApp:
         conflict_detail_scroll.pack(side="right", fill="y")
         self.conflict_detail_text.pack(side="left", fill="both", expand=True)
         self.conflict_detail_text.tag_configure("conflict_heading", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["muted"])
-        self.conflict_detail_text.tag_configure("conflict-title", font=(self.font_reading, 15, "bold"), foreground=theme.TOKENS["ink"])
+        self.conflict_detail_text.tag_configure("conflict-title", font=(self.font_title, 15), foreground=theme.TOKENS["ink"])
         self.conflict_detail_text.tag_configure("conflict-meta", font=(self.font_ui, 9), foreground=theme.TOKENS["muted"])
         self.conflict_detail_text.tag_configure("conflict-vote", font=(self.font_ui, 10, "bold"), foreground=theme.TOKENS["accent"])
         self.conflict_detail_text.tag_configure("conflict-reason", font=(self.font_ui, 9, "italic"), foreground=theme.TOKENS["muted"])
@@ -2680,7 +3101,7 @@ class ScreeningWorkbenchApp:
         )
         self.fulltext_detail_text.pack(fill="both", expand=True, pady=(2, 4))
         self.fulltext_detail_text.tag_configure("fulltext_heading", font=(self.font_ui, 9, "bold"))
-        self.fulltext_detail_text.tag_configure("fulltext-title", font=(self.font_reading, 15, "bold"), foreground=theme.TOKENS["ink"])
+        self.fulltext_detail_text.tag_configure("fulltext-title", font=(self.font_title, 15), foreground=theme.TOKENS["ink"])
         self.fulltext_detail_text.tag_configure("fulltext-meta", font=(self.font_ui, 9), foreground=theme.TOKENS["muted"])
         self.fulltext_detail_text.tag_configure("fulltext-abstract-heading", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["muted"])
         self.fulltext_detail_text.tag_configure("fulltext-abstract", font=(self.font_reading, 10), foreground=theme.TOKENS["ink"])
@@ -2699,22 +3120,22 @@ class ScreeningWorkbenchApp:
         self.fulltext_decision_bar = ttk.Frame(self.fulltext_assessment_buttons)
         self.fulltext_decision_bar.pack(fill="x")
         self.fulltext_decision_bar.grid_columnconfigure((0, 1, 2), weight=1, uniform="fulltext-decision")
-        self.fulltext_assess_included_btn = tk.Button(
-            self.fulltext_decision_bar, text="I · Include", command=lambda: self._report_assess("included"),
-            bg=theme.TOKENS["include_soft"], fg=theme.TOKENS["include"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 9, "bold"), padx=7, pady=5,
+        self.fulltext_assess_included_btn = _KeycapButton(
+            self.fulltext_decision_bar, key="I", word="Include", decision="include",
+            command=lambda: self._report_assess("included"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=5, keycap_padx=4,
         )
         self.fulltext_assess_included_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
-        self.fulltext_assess_maybe_btn = tk.Button(
-            self.fulltext_decision_bar, text="M · Maybe", command=lambda: self._report_assess("maybe"),
-            bg=theme.TOKENS["maybe_soft"], fg=theme.TOKENS["maybe"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 9, "bold"), padx=7, pady=5,
+        self.fulltext_assess_maybe_btn = _KeycapButton(
+            self.fulltext_decision_bar, key="M", word="Maybe", decision="maybe",
+            command=lambda: self._report_assess("maybe"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=5, keycap_padx=4,
         )
         self.fulltext_assess_maybe_btn.grid(row=0, column=1, sticky="ew", padx=3)
-        self.fulltext_assess_excluded_btn = tk.Button(
-            self.fulltext_decision_bar, text="E · Exclude...", command=lambda: self._report_assess("excluded"),
-            bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"], relief="solid", borderwidth=1,
-            font=(self.font_ui, 9, "bold"), padx=7, pady=5,
+        self.fulltext_assess_excluded_btn = _KeycapButton(
+            self.fulltext_decision_bar, key="E", word="Exclude...", decision="exclude",
+            command=lambda: self._report_assess("excluded"), font_ui=self.font_ui, font_mono=self.font_mono,
+            font_size=9, vertical_padding=5, keycap_padx=4,
         )
         self.fulltext_assess_excluded_btn.grid(row=0, column=2, sticky="ew", padx=(3, 0))
         self.fulltext_mechanics_note = ttk.Label(
@@ -2730,14 +3151,16 @@ class ScreeningWorkbenchApp:
         self.fulltext_next_btn.pack(side="left", fill="x", expand=True, padx=(3, 0))
 
         ttk.Label(self.fulltext_support_panel, text="EXCLUSION REASONS", style="SectionHeading.TLabel").pack(anchor="w", pady=(0, 2))
-        ttk.Label(self.fulltext_support_panel, text="PRISMA report stage", foreground=theme.TOKENS["muted"], wraplength=250).pack(anchor="w", pady=(0, 4))
+        ttk.Label(self.fulltext_support_panel, text="PRISMA report stage", foreground=theme.TOKENS["muted"], wraplength=250).pack(anchor="w", pady=(0, 2))
         self.fulltext_reason_note = tk.Label(
             self.fulltext_support_panel,
             text="Required for a terminal full-text exclusion. Exactly one primary reason is attached to the report and feeds PRISMA ‘reports excluded.’",
             bg=theme.TOKENS["info_soft"], fg=theme.TOKENS["info"], font=(self.font_ui, 9), justify="left", anchor="w", wraplength=245, padx=8, pady=7, height=3,
         )
-        self.fulltext_reason_note.pack(fill="x", pady=(0, 6))
-        self.fulltext_reason_var = tk.StringVar(value="")
+        # Paddings below are tight because Atkinson Hyperlegible runs ~2px
+        # taller per line than Segoe UI; the attached-PDF row must still fit.
+        self.fulltext_reason_note.pack(fill="x", pady=(0, 4))
+        self.fulltext_reason_var = tk.StringVar(master=self.root, value="")
         self.fulltext_reason_radios = []
         ttk.Style(self.root).configure("FulltextReason.TRadiobutton", padding=(0, 0), font=(self.font_ui, 9))
         for reason in screening.EXCLUSION_REASONS:
@@ -2745,12 +3168,12 @@ class ScreeningWorkbenchApp:
             radio.pack(anchor="w", fill="x", pady=0)
             self.fulltext_reason_radios.append(radio)
         self.fulltext_reason_count_label = ttk.Label(self.fulltext_support_panel, text="Counts on save · reports excluded +0", foreground=theme.TOKENS["muted"], wraplength=245)
-        self.fulltext_reason_count_label.pack(anchor="w", pady=(4, 2))
+        self.fulltext_reason_count_label.pack(anchor="w", pady=(2, 0))
         self.fulltext_not_retrieved_note = ttk.Label(self.fulltext_support_panel, text="Not retrieved is separate; it never receives a full-text exclusion reason.", foreground=theme.TOKENS["muted"], wraplength=245)
-        self.fulltext_not_retrieved_note.pack(anchor="w", pady=(0, 4))
+        self.fulltext_not_retrieved_note.pack(anchor="w", pady=(0, 2))
         self.fulltext_keyboard_guide = ttk.Label(self.fulltext_support_panel, text="Keyboard: Tab moves through queue, assessment, reasons and actions.", foreground=theme.TOKENS["muted"], wraplength=245)
-        self.fulltext_keyboard_guide.pack(anchor="w", pady=(0, 4))
-        ttk.Separator(self.fulltext_support_panel).pack(fill="x", pady=5)
+        self.fulltext_keyboard_guide.pack(anchor="w", pady=(0, 2))
+        ttk.Separator(self.fulltext_support_panel).pack(fill="x", pady=3)
         ttk.Label(self.fulltext_support_panel, text="ATTACHED PDF", style="SectionHeading.TLabel").pack(anchor="w", pady=(0, 2))
         self.fulltext_attachment_list_frame = ttk.Frame(self.fulltext_support_panel)
         self.fulltext_attachment_list_frame.pack(fill="both", expand=True, pady=(0, 2))
@@ -2859,12 +3282,9 @@ class ScreeningWorkbenchApp:
             )
             self.promote_report_btn.config(state="disabled")
             self.fulltext_not_retrieved_btn.config(state="disabled")
-            self.fulltext_assess_included_btn.config(state="disabled")
-            self.fulltext_assess_maybe_btn.config(state="disabled")
-            self.fulltext_assess_excluded_btn.config(state="disabled")
-            self.fulltext_assess_included_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
-            self.fulltext_assess_maybe_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
-            self.fulltext_assess_excluded_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
+            self.fulltext_assess_included_btn.set_enabled(False)
+            self.fulltext_assess_maybe_btn.set_enabled(False)
+            self.fulltext_assess_excluded_btn.set_enabled(False)
             self.attachment_listbox.delete(0, "end")
             self.attachment_listbox.config(state="disabled")
             self.attach_pdf_btn.config(state="disabled")
@@ -2878,12 +3298,9 @@ class ScreeningWorkbenchApp:
         self.fulltext_lock_label.config(text="")
         self.promote_report_btn.config(state="normal")
         self.fulltext_not_retrieved_btn.config(state="normal")
-        self.fulltext_assess_included_btn.config(state="normal")
-        self.fulltext_assess_maybe_btn.config(state="normal")
-        self.fulltext_assess_excluded_btn.config(state="normal")
-        self.fulltext_assess_included_btn.config(bg=theme.TOKENS["include_soft"], fg=theme.TOKENS["include"], relief="solid")
-        self.fulltext_assess_maybe_btn.config(bg=theme.TOKENS["maybe_soft"], fg=theme.TOKENS["maybe"], relief="solid")
-        self.fulltext_assess_excluded_btn.config(bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"], relief="solid")
+        self.fulltext_assess_included_btn.set_enabled(True)
+        self.fulltext_assess_maybe_btn.set_enabled(True)
+        self.fulltext_assess_excluded_btn.set_enabled(True)
         self.attachment_listbox.config(state="normal")
         self.attach_pdf_btn.config(state="normal")
         self.open_attachment_btn.config(state="normal")
@@ -2931,9 +3348,9 @@ class ScreeningWorkbenchApp:
             self.fulltext_selected_identity.config(text="No report selected")
             self.fulltext_previous_btn.config(state="disabled")
             self.fulltext_next_btn.config(state="disabled")
-            self.fulltext_assess_included_btn.config(state="disabled")
-            self.fulltext_assess_maybe_btn.config(state="disabled")
-            self.fulltext_assess_excluded_btn.config(state="disabled")
+            self.fulltext_assess_included_btn.set_enabled(False)
+            self.fulltext_assess_maybe_btn.set_enabled(False)
+            self.fulltext_assess_excluded_btn.set_enabled(False)
             self.fulltext_not_retrieved_btn.config(state="disabled")
             self.fulltext_reason_var.set("")
             self.fulltext_reason_note.configure(text="Select a report to review its terminal-exclusion reason state.")
@@ -2941,13 +3358,10 @@ class ScreeningWorkbenchApp:
             for radio in self.fulltext_reason_radios:
                 radio.configure(state="disabled")
             self.fulltext_empty_detail_label.pack(anchor="w", pady=(0, 6), before=self.fulltext_detail_text)
-            self.fulltext_assess_included_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
-            self.fulltext_assess_maybe_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
-            self.fulltext_assess_excluded_btn.config(bg=theme.TOKENS["surface_raised"], fg=theme.TOKENS["muted"], relief="flat")
             self.fulltext_not_retrieved_btn.config(state="disabled")
-            self.fulltext_assess_included_btn.config(state="disabled")
-            self.fulltext_assess_maybe_btn.config(state="disabled")
-            self.fulltext_assess_excluded_btn.config(state="disabled")
+            self.fulltext_assess_included_btn.set_enabled(False)
+            self.fulltext_assess_maybe_btn.set_enabled(False)
+            self.fulltext_assess_excluded_btn.set_enabled(False)
             self.attachment_listbox.config(state="disabled")
             self.attach_pdf_btn.config(state="disabled")
             self.open_attachment_btn.config(state="disabled")
@@ -2958,9 +3372,6 @@ class ScreeningWorkbenchApp:
         self.open_attachment_btn.config(state="normal")
         self.remove_attachment_btn.config(state="normal")
         self.fulltext_empty_detail_label.pack_forget()
-        self.fulltext_assess_included_btn.config(bg=theme.TOKENS["include_soft"], fg=theme.TOKENS["include"], relief="solid")
-        self.fulltext_assess_maybe_btn.config(bg=theme.TOKENS["maybe_soft"], fg=theme.TOKENS["maybe"], relief="solid")
-        self.fulltext_assess_excluded_btn.config(bg=theme.TOKENS["exclude_soft"], fg=theme.TOKENS["exclude"], relief="solid")
         if selected_id in self._report_ids:
             self.report_list.selection_set(self._report_ids.index(selected_id))
         elif self._report_ids:
@@ -2978,15 +3389,6 @@ class ScreeningWorkbenchApp:
         self._fulltext_rendered_report_id = selected_id
         if changed_report:
             self.fulltext_reason_var.set("")
-        else:
-            self.fulltext_selected_identity.config(text="Blind mode · report details are hidden")
-            self.fulltext_previous_btn.config(state="disabled")
-            self.fulltext_next_btn.config(state="disabled")
-            self.fulltext_reason_var.set("")
-            self.fulltext_reason_note.configure(text="Full-text details and decision controls are locked while blind mode is on.")
-            self.fulltext_reason_count_label.configure(text="Counts unavailable while blind")
-            for radio in self.fulltext_reason_radios:
-                radio.configure(state="disabled")
         self._update_fulltext_reason_state()
         self.fulltext_detail_text.config(state="normal")
         self.fulltext_detail_text.delete("1.0", "end")
@@ -3243,7 +3645,7 @@ class ScreeningWorkbenchApp:
         # _render_study_detail; empty for a study row or a single-
         # occurrence report (nothing to choose among).
         ttk.Label(self.studies_canonical_card, text="CANONICAL OCCURRENCE", style="SectionHeading.TLabel").pack(anchor="w", pady=(0, 5))
-        self.study_canonical_var = tk.StringVar()
+        self.study_canonical_var = tk.StringVar(master=self.root)
         self.study_canonical_frame = ttk.Frame(self.studies_canonical_card)
         self.study_canonical_frame.pack(anchor="nw", fill="both", expand=True)
         ttk.Label(
@@ -3653,6 +4055,14 @@ class ScreeningWorkbenchApp:
         self.prisma_audit_card.grid_rowconfigure(2, weight=1)
         def _on_frame_configure(event=None):
             self.prisma_scroll_canvas.configure(scrollregion=self.prisma_scroll_canvas.bbox("all"))
+
+        def _rewrap_flow_notices(event):
+            # Wrap the preview notices to the card's real width, which is only
+            # known after layout (and changes with the window and the fonts).
+            wrap = max(300, event.width - 48)
+            for label in (self.prisma_watermark_label, self.prisma_live_data_label):
+                label.configure(wraplength=wrap)
+        self.prisma_flow_card.bind("<Configure>", _rewrap_flow_notices, add="+")
         frame.bind("<Configure>", _on_frame_configure)
 
         def _on_outer_canvas_configure(event):
@@ -3703,7 +4113,9 @@ class ScreeningWorkbenchApp:
                                           yscrollcommand=lambda *args: self.prisma_counts_scrollbar.set(*args))
         self.prisma_counts_text.tag_configure("snapshot-heading", font=(self.font_ui, 11, "bold"), foreground=theme.TOKENS["accent"])
         self.prisma_counts_text.tag_configure("snapshot-section", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["muted"])
-        self.prisma_counts_text.tag_configure("snapshot-value", font=(self.font_ui, 11, "bold"), foreground=theme.TOKENS["ink"])
+        # Values match the 9pt label size so every identification row,
+        # through "Open fuzzy pairs", fits the fixed-height snapshot.
+        self.prisma_counts_text.tag_configure("snapshot-value", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["ink"])
         self.prisma_counts_text.tag_configure("snapshot-detail", font=(self.font_ui, 9), foreground=theme.TOKENS["muted"])
         self.prisma_counts_text.tag_configure("snapshot-status", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["include"])
         self.prisma_counts_text.tag_configure("snapshot-reconcile", font=(self.font_ui, 9, "bold"), foreground=theme.TOKENS["info"])
@@ -3753,8 +4165,10 @@ class ScreeningWorkbenchApp:
         self.prisma_audit_tree = ttk.Treeview(
             self.prisma_audit_card, columns=("sequence", "time", "actor", "event_type"), show="headings", height=8,
         )
+        tree_font = tkfont.Font(root=self.root, font=ttk.Style(self.root).lookup("Treeview", "font"))
+        time_width = tree_font.measure("0000-00-00 00:00:00") + 16
         for col, label, width in [
-            ("sequence", "Seq", 48), ("time", "Time", 126),
+            ("sequence", "Seq", 48), ("time", "Time (UTC)", time_width),
             ("actor", "Actor", 88), ("event_type", "Event type", 168),
         ]:
             self.prisma_audit_tree.heading(col, text=label)
@@ -3766,8 +4180,8 @@ class ScreeningWorkbenchApp:
         self.prisma_export_button.pack(anchor="w")
         ttk.Label(
             self.prisma_audit_card,
-            text="Full export authorization, watermarking, and SVG flow diagram are in export.py;"
-                 " this tab is a read-only counts snapshot, not a separate export path.",
+            text="Export package writes the official watermarked PRISMA diagram, decisions, and audit log."
+                 " This tab is a read-only preview, not a separate export path.",
             font=(self.font_ui, 8), foreground=theme.TOKENS["muted"], wraplength=300,
         ).pack(anchor="w", pady=(4, 0))
 
@@ -3916,42 +4330,62 @@ class ScreeningWorkbenchApp:
         self.prisma_diagram_canvas.update_idletasks()
         canvas_width = max(300, min(610, self.prisma_flow_card.winfo_width() - 36))
         self.prisma_diagram_canvas.configure(width=canvas_width)
-        side_width, side_height = 128, 44
-        main_width, main_height = 175, 27
-        left_stage_width = 115 + main_width + 24
-        right_stage_width = side_width
-        gap = max(14, canvas_width - 2 * 12 - left_stage_width - right_stage_width)
-        main_x = 12 + 115
-        side_x = main_x + main_width + gap
+        # One lattice: six equal rows with a 7px arrow gap fit the fixed
+        # 205px canvas; each side box shares its source row so exclusion
+        # arrows run straight across. Widths come from measured text, so
+        # a label never runs into its value or a neighbouring box.
+        label_font = tkfont.Font(root=self.root, font=(self.font_ui, 8))
+        stage_font = tkfont.Font(root=self.root, font=(self.font_ui, 8, "bold"))
+        value_font = tkfont.Font(root=self.root, font=(self.font_ui, 10, "bold"))
+        stages = (
+            ("IDENTIFICATION", "box-identified"), ("SCREENING / RETRIEVAL", "box-sought"),
+            ("ELIGIBILITY", "box-assessed"), ("INCLUDED", "box-included"),
+        )
+        stage_width = max(stage_font.measure(word) for text, _ in stages for word in text.split()) + 4
+        main_rows = ["box-identified", "box-removed", "box-sought", "box-assessed", "box-included", "box-studies-included"]
+        side_of = {"box-not-retrieved": "box-sought", "box-excluded": "box-assessed"}
+        row_height, row_gap, top = 26, 7, 4
+        value_reserve = max(value_font.measure(str(b["value"])) for b in boxes) + 12
+
+        def box_width(ids) -> int:
+            return max(label_font.measure(b["label"]) for b in boxes if b["id"] in ids) + 14 + value_reserve
+
+        main_x = 8 + stage_width + 8
+        main_width, side_width = box_width(main_rows), box_width(side_of)
+        arrow_gap = max(16, min(36, canvas_width - 4 - main_x - main_width - side_width))
+        side_x = main_x + main_width + arrow_gap
         if side_x + side_width > canvas_width - 4:
-            side_x = canvas_width - side_width - 4
-            main_x = min(main_x, side_x - main_width - 16)
-        main_rows = {
-            "box-identified": 4,
-            "box-removed": 33,
-            "box-sought": 62,
-            "box-assessed": 91,
-            "box-included": 120,
-            "box-studies-included": 149,
-        }
-        side_rows = {"box-not-retrieved": 62, "box-excluded": 91}
-        side_value_y = {"box-not-retrieved": 85, "box-excluded": 114}
+            # Narrow card: split the shortfall between the two columns;
+            # labels then wrap inside their boxes instead of overflowing.
+            shortfall = side_x + side_width - (canvas_width - 4)
+            main_width -= shortfall // 2
+            side_width -= shortfall - shortfall // 2
+            side_x = main_x + main_width + arrow_gap
+        row_y = {box_id: top + index * (row_height + row_gap) for index, box_id in enumerate(main_rows)}
         positions: dict[str, tuple[int, int, int, int]] = {}
         for box in boxes:
-            if box["id"] in main_rows:
-                x = main_x
-                y = main_rows[box["id"]]
-                width, height = main_width, main_height
+            if box["id"] in row_y:
+                positions[box["id"]] = (main_x, row_y[box["id"]], main_width, row_height)
             else:
-                x, y, width, height = side_x, side_rows.get(box["id"], 100), side_width, side_height
-            positions[box["id"]] = (x, y, width, height)
+                positions[box["id"]] = (side_x, row_y[side_of[box["id"]]], side_width, row_height)
+
+        # Live preview only: engineering graph paper on the lattice the
+        # boxes use. Skipped in Windows high contrast; export.py never draws it.
+        if not display_prefs.high_contrast():
+            for x in range(0, canvas_width + 1, 8):
+                canvas.create_line(x, 0, x, canvas_height, tags=("grid",),
+                                   fill=theme.TOKENS["grid_major" if x % 40 == 0 else "grid_minor"])
+            for y in range(0, canvas_height + 1, 8):
+                canvas.create_line(0, y, canvas_width, y, tags=("grid",),
+                                   fill=theme.TOKENS["grid_major" if y % 40 == 0 else "grid_minor"])
 
         # Preserve every original PRISMA box value/label; arrows show the
         # stage relationship without adding new derived data.
-        canvas.create_text(10, 4, anchor="nw", text="IDENTIFICATION", font=(self.font_ui, 8, "bold"), fill=theme.TOKENS["muted"])
-        canvas.create_text(10, 62, anchor="nw", text="SCREENING / RETRIEVAL", font=(self.font_ui, 8, "bold"), fill=theme.TOKENS["muted"])
-        canvas.create_text(10, 91, anchor="nw", text="ELIGIBILITY", font=(self.font_ui, 8, "bold"), fill=theme.TOKENS["muted"])
-        canvas.create_text(10, 149, anchor="nw", text="INCLUDED", font=(self.font_ui, 8, "bold"), fill=theme.TOKENS["muted"])
+        for text, box_id in stages:
+            canvas.create_text(
+                8, row_y[box_id] + 5, anchor="nw", text=text, width=stage_width,
+                font=(self.font_ui, 8, "bold"), fill=theme.TOKENS["muted"],
+            )
         for start_id, end_id in (
             ("box-identified", "box-removed"),
             ("box-removed", "box-sought"),
@@ -3965,34 +4399,28 @@ class ScreeningWorkbenchApp:
                 x1 + w1 / 2, y1 + h1, x2 + w2 / 2, y2,
                 fill=theme.TOKENS["muted"], width=1, arrow="last",
             )
-        ex_x, ex_y, ex_w, ex_h = positions["box-excluded"]
-        assessed_x, assessed_y, assessed_w, assessed_h = positions["box-assessed"]
-        canvas.create_line(
-            assessed_x + assessed_w, assessed_y + assessed_h / 2,
-            ex_x, ex_y + ex_h / 2, fill=theme.TOKENS["muted"], width=1, arrow="last",
-        )
-        sought_x, sought_y, sought_w, sought_h = positions["box-sought"]
-        not_retrieved_x, not_retrieved_y, not_retrieved_w, not_retrieved_h = positions["box-not-retrieved"]
-        canvas.create_line(
-            sought_x + sought_w, sought_y + sought_h / 2,
-            not_retrieved_x, not_retrieved_y + not_retrieved_h / 2,
-            fill=theme.TOKENS["muted"], width=1, arrow="last",
-        )
+        for side_id, source_id in side_of.items():
+            source_x, source_y, source_w, source_h = positions[source_id]
+            canvas.create_line(
+                source_x + source_w, source_y + source_h / 2,
+                positions[side_id][0], source_y + source_h / 2,
+                fill=theme.TOKENS["muted"], width=1, arrow="last",
+            )
 
         max_x = canvas_width
         max_y = canvas_height
+        diagram = theme.diagram_style(self.root)
         for b in boxes:
             x, y, w, h = positions[b["id"]]
-            diagram = theme.diagram_style(self.root)
             canvas.create_rectangle(
                 x, y, x + w, y + h, fill=diagram["fill"], outline=theme.TOKENS["line_strong"], width=1,
             )
             canvas.create_text(
-                x + 7, y + 4, anchor="nw", text=b["label"],
-                font=(self.font_ui, 7 if b["id"] in side_rows else 8), fill=theme.TOKENS["muted"], width=w - 14,
+                x + 7, y + 5, anchor="nw", text=b["label"],
+                font=(self.font_ui, 8), fill=theme.TOKENS["muted"], width=max(40, w - 14 - value_reserve),
             )
             canvas.create_text(
-                x + w - 7, side_value_y[b["id"]] if b["id"] in side_value_y else y + h - 4,
+                x + w - 7, y + h - 4,
                 anchor="se", text=str(b["value"]),
                 font=(self.font_ui, 10, "bold"), fill=theme.TOKENS["accent"],
             )
@@ -4031,13 +4459,25 @@ class ScreeningWorkbenchApp:
         for event in export.list_audit_events(self.conn):
             self.prisma_audit_tree.insert(
                 "", "end", iid=event["event_id"],
-                values=(event["sequence"], event["occurred_at"], event["actor"], event["event_type"]),
+                values=(event["sequence"], _audit_display_time(event["occurred_at"]), event["actor"], event["event_type"]),
             )
+
+
+def _audit_display_time(occurred_at: str) -> str:
+    """Whole seconds in UTC for the on-screen log; the export keeps full precision."""
+    try:
+        moment = datetime.datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return str(occurred_at)
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(datetime.timezone.utc)
+    return moment.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def main() -> None:
     reviewer_id = os.environ.get(REVIEWER_ID_ENV, "reviewer1")
     default_path = os.path.join(os.path.expanduser("~"), "screening-workbench-project.sqlite")
+    typefaces.load_bundled_fonts()  # before Tk's first font lookup
     root = tk.Tk()
     ScreeningWorkbenchApp(root, default_path, reviewer_id=reviewer_id)
     root.mainloop()

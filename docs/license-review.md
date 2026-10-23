@@ -1,20 +1,38 @@
 ---
-title: Screening Workbench 1.0.0 Runtime License Review
-date: 2026-10-13
+title: Screening Workbench 2.0.0 Runtime License Review
+date: 2026-10-22
 type: release-review
 product: Screening Workbench
-version: 1.0.0
-source-commit: f93a88b12dbd32272c7e9dc5bf8544478df9f160
+version: 2.0.0
+source-commit: 5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7
 confidence: medium
 ---
 
-# License review — Screening Workbench 1.0.0 Windows runtime
+# License review — Screening Workbench 2.0.0 Windows runtime
 
-## For future reviewers
+## Current artifact: Screening Workbench 2.0.0
+
+This is an engineering review of the 2.0.0 Windows x64 onedir package, not legal advice or distribution approval.
+
+- Source build commit: `5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7`.
+- Build: CPython 3.14.7 x64, PyInstaller 6.21.0, Windows 11 x64, onedir/windowed.
+- ZIP: `Screening-Workbench-2.0.0-windows-x64.zip`, 17,398,639 bytes, SHA-256 `15a30f396e00f7367485181f140601899cb1b8ba5ff074ee52db64c9243f49a7`; 1,029 entries, archive integrity check passed.
+- Package inspection verified all ten bundled TTF files against `docs/license-audit.md` and all 16 staged notices against `docs/notices/`.
+- The application remains MIT-licensed and uses Python standard-library modules. Three bundled font families are covered by their SIL Open Font License 1.1 notices.
+- The exact-package runtime comparison is recorded in the release-gate report. The CRT pair is byte-identical to the shipped v1.0.0 files at 14.51.36247.0; under the 2026-10-22 owner ruling, the v1.0.0 gate entitlement conclusion carries. The remaining 42 modified and 3 added runtime files are API-set/UCRT forwarders and ucrtbase.dll, plus base_library.zip, attributed by the owner to build-host Windows SDK/UCRT variance. UCRT uses the Windows SDK basis recorded in the v1 provenance memo. No other runtime files changed. Historical OpenSSL, SQLite, and zlib provenance questions for unchanged files remain subject to Cinder review.
+- An initial smoke attempt imported one synthetic CSV row before profile isolation was verified and changed the real-profile WAL sidecar. Under Nate's later owner ruling, the database, WAL, and SHM were copied and size/hash verified before one SQLite transaction deleted the synthetic occurrence, its occurrence_fields row, and its import batch; the event log was retained. The exact ZIP then had isolated Light and Night retries that exited before window creation; these are historical failed attempts. The final gate evidence superseded those failures: the automated exact-ZIP Light full workflow passed with exit code 0, and on 2026-10-23 the owner confirmed that Open selected opened the attached synthetic PDF in Chrome PDF viewer, captured Night-theme Screening, and closed the app normally. Cinder marked the packaged UI gate passed. See docs/release-gate-2.0.0.md. Remaining runtime provenance questions and Cinder's post-push review are still pending.
+
+The package is unsigned. Application signing was not approved. The exact-ZIP UI smoke gate passed on 2026-10-23 (see docs/release-gate-2.0.0.md); Cinder's post-push review of the remaining runtime provenance questions is pending. This review does not clear the artifact for public distribution.
+
+## Historical v1.0.0 evidence
+
+The following material records the earlier v1 artifact. It is not a fresh component-level review of the v2.0.0 ZIP. It remains useful as evidence for the unresolved runtime component provenance and redistribution issues summarized above.
+
+
 
 This is an engineering review of the compiled Windows x64 onedir artifact, not legal advice. It records what was observable in the exact frozen tree, official CPython 3.14.7 distribution SBOM, source archives, Tcl/Tk license files, PE imports, and PyInstaller build logs. The app imports only Python standard-library modules; the bundle includes CPython/Tcl/Tk and additional standard-library implementation components. The tree indicates no application GPL/LGPL component, but component version/provenance discrepancies and omitted license notices prevent an unconditional redistribution clearance.
 
-## Artifact scope
+### Historical v1 artifact scope
 
 - Source commit: `f93a88b12dbd32272c7e9dc5bf8544478df9f160`.
 - Build: CPython 3.14.7 x64, PyInstaller 6.21.0, Windows 11 x64, PyInstaller onedir/windowed.

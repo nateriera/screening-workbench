@@ -6,7 +6,36 @@ release.
 
 ## [Unreleased]
 
-Nothing yet.
+## [2.0.0] — 2026-10-22
+
+### Added
+- Card Catalogue visual direction 02: drawer chrome, card-stock surfaces,
+  highlighter accent for "now" / "needs you", and a redesigned Screening
+  record card with a call-number progress strip.
+- Bundled typefaces — Newsreader, Atkinson Hyperlegible Next and Mono
+  (SIL OFL 1.1) — loaded privately by the app; nothing is installed
+  system-wide. License audit, SBOM, and notices cover the fonts.
+- Night Stacks dark palette with View → Theme (Light / Night / follow
+  Windows), saved between launches.
+- Decision stamp animation on Screening decisions, with View → Reduce
+  motion (also honours the Windows animation setting and
+  `SW_REDUCE_MOTION`).
+- Keycap decision buttons on Maybe re-review and Full-text, matching
+  Screening; Exclude visibly arms the reason list while the picker is open.
+- PRISMA flow diagram graph-paper backdrop (hidden in high contrast).
+
+### Changed
+- R6 polish: card surfaces, PRISMA flow rebuilt on a measured lattice,
+  shell chrome, and a wrapping Duplicates field comparison.
+
+### Fixed
+- Recent decisions now break tied timestamps by insertion order, matching
+  undo (was: lexical vote-ID order).
+- A chosen full-text exclusion reason is no longer cleared when the same
+  report re-renders.
+- Duplicates provenance prints the import locator once (e.g. "row 2").
+- Tk variables carry explicit masters (Aqua Tk correctness; no Windows
+  behaviour change).
 
 ## [1.0.0] — 2026-10-21
 

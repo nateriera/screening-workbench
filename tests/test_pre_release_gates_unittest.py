@@ -49,6 +49,11 @@ class PreReleaseGates(unittest.TestCase):
         all_pairs = dedup._iter_candidate_pairs(None, ["a", "b", "c"])
         self.assertEqual(list(all_pairs), [("a", "b"), ("a", "c"), ("b", "c")])
 
+    def test_pair_budget_covers_real_corpus_and_about_7000_records(self):
+        self.assertEqual(dedup.MAX_PAIR_COMPARISONS, 25_000_000)
+        dedup.ensure_pair_comparison_budget(self.conn, 1_576)
+        dedup.ensure_pair_comparison_budget(self.conn, 7_000)
+
     def test_duplicate_pair_budget_aborts_without_partial_dedup_state(self):
         commit_csv_import(
             self.conn, "title,authors,year\nAnother Study,Smith,2020\nThird Study,Jones,2021\n",

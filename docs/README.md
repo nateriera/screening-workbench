@@ -10,7 +10,7 @@ and the quickstart. This index covers the rest.
   format identifiers and merge rules.
 - [`docs/ui-references/`](ui-references/) — per-tab screen references
   and live captures.
-- [`docs/design-system.md`](design-system.md) — the Field Notes visual
+- [`docs/design-system.md`](design-system.md) — the Card Catalogue visual
   system and its accessibility gates.
 
 ## Behavior specifications (clean room)
@@ -44,6 +44,7 @@ The app is implemented from public-source behavioral specifications:
 - [`docs/release-gate-1.0.0.md`](release-gate-1.0.0.md) — the v1.0.0
   release gate record: artifact identity, provenance review,
   entitlement attestation, and publication.
+- [docs/release-gate-2.0.0.md](release-gate-2.0.0.md) — the passed v2.0.0 release gate record, including artifact identity and exact-package evidence.
 
 Working papers from the October 2026 implementation (the product brief,
 process notes, and the UI convergence log) are kept in the project's

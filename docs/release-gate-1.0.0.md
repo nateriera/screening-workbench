@@ -260,3 +260,18 @@ SHA-256 in the release notes. Verified by read-back after publication. All
 gate items in this report are closed. Post-release, per the
 publishing-sequence addendum: SignPath Foundation application; first signed
 build v1.1 or later.
+
+
+## Addendum — 2026-10-22 CRT version correction (owner ruling)
+
+Owner ruling by Nate on 2026-10-22, for Cinder's review: the shipped v1.0.0
+ZIP contains `VCRUNTIME140.dll` and `VCRUNTIME140_1.dll` at version
+14.51.36247.0. Their SHA-256 hashes are respectively
+`d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7` and
+`a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e`.
+Both files are byte-identical to the corresponding files in the v2.0.0 ZIP.
+
+This corrects the version text in the 2026-10-21 attestation above: the
+14.44.35211.0 figure was a record error. The 2026-10-21 Visual Studio
+Community 2022 17.14.36 attestation and the Windows SDK basis for UCRT
+redistribution remain as recorded. Cinder review is pending.

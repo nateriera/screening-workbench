@@ -15,7 +15,9 @@ from screening_workbench.normalize import levenshtein, title_similarity
 
 RULE_VERSION = 1
 FUZZY_THRESHOLD = 0.90
-MAX_PAIR_COMPARISONS = 1_000_000
+# Covers an all-pairs pass for about 7,000 records; pairs are counted lazily
+# to bound memory. CPU time remains the residual risk; the limit stays fail-closed.
+MAX_PAIR_COMPARISONS = 25_000_000
 
 
 class PairComparisonLimitError(ValueError):

@@ -1,8 +1,10 @@
-# Windows packaging: Screening Workbench 1.0.0
+# Windows packaging: Screening Workbench 2.0.0
 
 This is the verified Windows 11 x64 PyInstaller onedir procedure for Screening Workbench. It documents the Tcl/Tk zipfs workaround required for CPython 3.14.7 + PyInstaller 6.21.0. Build from a fresh checkout; keep all generated files outside it. This procedure builds only; it does not sign, publish, or create an installer.
 
-**Reference artifact:** source commit `f93a88b12dbd32272c7e9dc5bf8544478df9f160`; `Screening-Workbench-1.0.0-windows-x64.zip`, 15,870,858 bytes, SHA-256 `5865219df1ba9efcefdb9e5e8868e5cf46aedecfec2fa498c4842066e45502e2`.
+**Reference artifact:** source commit `5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7`; `Screening-Workbench-2.0.0-windows-x64.zip`, 17,398,639 bytes, SHA-256 `15a30f396e00f7367485181f140601899cb1b8ba5ff074ee52db64c9243f49a7`. See `docs/release-gate-2.0.0.md`.
+
+The recorded ZIP was built from private build-repository commit `5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7`. The public repository has a separate Git history; this procedure builds the mirrored source on public `main` and does not claim to reproduce that ZIP byte-for-byte.
 
 ## Requirements
 
@@ -22,7 +24,7 @@ $env:SWB_BUILD = 'C:\work\swb-release-build'
 $env:SWB_SUPPORT = 'C:\work\swb-release-inputs'
 git clone https://github.com/nateriera/screening-workbench.git $env:SWB_ROOT
 Set-Location $env:SWB_ROOT
-git checkout f93a88b12dbd32272c7e9dc5bf8544478df9f160
+git checkout main
 New-Item -ItemType Directory -Force -Path $env:SWB_BUILD, $env:SWB_SUPPORT | Out-Null
 ```
 
@@ -79,17 +81,46 @@ Run from the checkout root with the environment variables above still set:
 
 ```powershell
 Set-Location $env:SWB_ROOT
-& $python -m PyInstaller --clean --noconfirm --onedir --windowed --name ScreeningWorkbench --paths src --specpath "$env:SWB_BUILD\spec" --workpath "$env:SWB_BUILD\build" --distpath "$env:SWB_BUILD\dist" src\screening_workbench\app.py
+& $python -m PyInstaller --clean --noconfirm --onedir --windowed --name ScreeningWorkbench --paths src --specpath "$env:SWB_BUILD\spec" --workpath "$env:SWB_BUILD\build" --distpath "$env:SWB_BUILD\dist" --add-data "$env:SWB_ROOT\src\screening_workbench\fonts;screening_workbench/fonts" src\screening_workbench\app.py
 ```
 
-This leaves the `.spec`, `build`, and `dist` outside the source tree. The expected executable is `$env:SWB_BUILD\dist\ScreeningWorkbench\ScreeningWorkbench.exe`.
+`--add-data` bundles the ten OFL typeface files from `$env:SWB_ROOT\src\screening_workbench\fonts` to `_internal/screening_workbench/fonts`, where `typefaces.FONT_DIR` resolves inside the frozen app. This leaves the `.spec`, `build`, and `dist` outside the source tree. The expected executable is `$env:SWB_BUILD\dist\ScreeningWorkbench\ScreeningWorkbench.exe`.
 
 ## Required smoke test and package
+
+### Disposable profile isolation (mandatory before launch)
+
+The project database path is derived from `os.path.expanduser("~")`; settings use `SW_SETTINGS_PATH` or `%APPDATA%`. Isolate both before launching the packaged executable. Use a new disposable directory outside the repository and run the EXE from the same PowerShell process so it inherits these values:
+
+```powershell
+$env:SWB_TEST_PROFILE = Join-Path $env:TEMP ("ScreeningWorkbench-Smoke-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $env:SWB_TEST_PROFILE | Out-Null
+$env:USERPROFILE = $env:SWB_TEST_PROFILE
+$env:HOMEDRIVE = [IO.Path]::GetPathRoot($env:SWB_TEST_PROFILE).TrimEnd('\')
+$env:HOMEPATH = $env:SWB_TEST_PROFILE.Substring($env:HOMEDRIVE.Length)
+$env:APPDATA = Join-Path $env:SWB_TEST_PROFILE 'AppData\Roaming'
+$env:LOCALAPPDATA = Join-Path $env:SWB_TEST_PROFILE 'AppData\Local'
+$env:SW_SETTINGS_PATH = Join-Path $env:APPDATA 'Screening Workbench\settings.json'
+$expectedProject = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE 'screening-workbench-project.sqlite'))
+$expectedSettings = [IO.Path]::GetFullPath($env:SW_SETTINGS_PATH)
+$profileRoot = [IO.Path]::GetFullPath($env:SWB_TEST_PROFILE).TrimEnd('\') + '\'
+if (!$expectedProject.StartsWith($profileRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Project database path is outside the disposable profile' }
+if (!$expectedSettings.StartsWith($profileRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Settings path is outside the disposable profile' }
+$resolvedHome = (& $python -c "import os; print(os.path.expanduser('~'))").Trim()
+if ([IO.Path]::GetFullPath($resolvedHome).TrimEnd('\') -ne [IO.Path]::GetFullPath($env:USERPROFILE).TrimEnd('\')) { throw 'Python home does not resolve to the disposable profile' }
+if ((Test-Path -LiteralPath $expectedProject) -or (Test-Path -LiteralPath $expectedSettings)) { throw 'Disposable profile unexpectedly contains an existing database or settings file' }
+Write-Host "Verified synthetic project database path: $expectedProject"
+Write-Host "Verified disposable settings path: $expectedSettings"
+```
+
+Before importing any fixture, verify that the app uses the disposable database path under `SWB_TEST_PROFILE`. Use synthetic records only. Stop if the database or settings path resolves outside the disposable profile. Never reuse a profile containing user projects.
+
+**Keep one persistent PowerShell session per profile for the entire smoke run.** Launch the extracted executable, poll for the exact main-window title and disposable database, perform every UI workflow and capture, then close the app window and wait for that process to exit before the PowerShell session returns. Do not let a launch command return and check its PID from a later shell. If the app exits before window readiness, record its exit code and captured stdout/stderr in that same session and stop the run. Use a fresh session and profile for the other theme.
 
 Before packaging:
 
 1. Read `$env:SWB_BUILD\build\ScreeningWorkbench\warn-ScreeningWorkbench.txt`. Conditional platform-only warnings (for example `posix`, `pwd`, `grp`, `fcntl`, `readline`, `java.lang`, `vms_lib`, `_scproxy`, `resource`) are normal. Tcl/Tk missing-directory warnings are a failure. Keep `TCL_LIBRARY` and `TK_LIBRARY` from the earlier setup exported into this PowerShell process when invoking PyInstaller; if a new shell was opened, set both explicitly again to the extracted filesystem directories before building.
-2. Confirm these exist under `dist\ScreeningWorkbench\_internal`: `_tcl_data\init.tcl`, `_tk_data\tk.tcl`, `tcl90.dll`, `tcl9tk90.dll`, `libtommath.dll`. Fail the build if the Tcl/Tk warning appears or if `_tcl_data` / `_tk_data` is missing.
+2. Confirm these exist under `dist\ScreeningWorkbench\_internal`: `_tcl_data\init.tcl`, `_tk_data\tk.tcl`, `tcl90.dll`, `tcl9tk90.dll`, `libtommath.dll`. Also confirm `screening_workbench\fonts` contains exactly the ten `.ttf` files listed in `docs/license-audit.md`, with matching SHA-256 hashes. Fail the build if the Tcl/Tk warning appears or if `_tcl_data` / `_tk_data` is missing.
 3. Launch the built EXE itself. Verify the visible window title is `Screening Workbench -- systematic review screening`, the window remains usable, and no Tcl/Tk traceback or missing-data error appears. Close it cleanly. A running process alone does not pass this test.
 4. Copy the audited, version-controlled notice files into the onedir bundle. Keep both source and staged copies byte-for-byte identical; fail if any required notice is missing:
 
@@ -99,7 +130,8 @@ $noticeFiles = @(
   'Tcl-license.terms', 'Tk-license.terms', 'LibTomMath-LICENSE.txt',
   'OpenSSL-LICENSE.txt', 'SQLite-NOTICE.txt', 'zlib-LICENSE.md',
   'Expat-COPYING.txt', 'libffi-LICENSE.txt', 'bzip2-LICENSE.txt',
-  'XZ-COPYING.txt', 'Zstandard-LICENSE.txt'
+  'XZ-COPYING.txt', 'Zstandard-LICENSE.txt',
+  'Newsreader-OFL.txt', 'AtkinsonHyperlegibleNext-OFL.txt', 'AtkinsonHyperlegibleMono-OFL.txt'
 )
 $sourceNotices = Join-Path $env:SWB_ROOT 'docs\notices'
 $bundleNotices = Join-Path $env:SWB_BUILD 'dist\ScreeningWorkbench\notices'
@@ -114,12 +146,12 @@ foreach ($name in $noticeFiles) {
 }
 ```
 
-This list includes the app's MIT text, CPython's complete distribution license, Tcl/Tk terms (as separate Tcl and Tk copies), LibTomMath's Unlicense, Apache-2.0 OpenSSL terms, SQLite's public-domain notice, and the upstream notices for zlib-ng, Expat, libffi, bzip2, liblzma, and Zstandard. The official SQLite source does not ship a separate license file; the notice records its public-domain dedication and blessing, sourced at sqlite.org/copyright.html. The Visual C++ runtime is from the build host and is subject to Microsoft's Visual Studio redistribution terms; it is not an open-source license text and the right to redistribute is conditional on the publisher's valid Visual Studio license and the listed unmodified files. Confirm that entitlement before publishing.
+This list includes the app's MIT text, CPython's complete distribution license, Tcl/Tk terms (as separate Tcl and Tk copies), LibTomMath's Unlicense, Apache-2.0 OpenSSL terms, SQLite's public-domain notice, the upstream notices for zlib-ng, Expat, libffi, bzip2, liblzma, and Zstandard, and the SIL Open Font License texts for the three bundled typeface families (Newsreader, Atkinson Hyperlegible Next, Atkinson Hyperlegible Mono). The official SQLite source does not ship a separate license file; the notice records its public-domain dedication and blessing, sourced at sqlite.org/copyright.html. The Visual C++ runtime is from the build host and is subject to Microsoft's Visual Studio redistribution terms; it is not an open-source license text and the right to redistribute is conditional on the publisher's valid Visual Studio license and the listed unmodified files. Confirm that entitlement before publishing.
 
 5. Only after smoke test and notice staging succeed, create and verify the ZIP:
 
 ```powershell
-$zip = "$env:SWB_BUILD\dist\Screening-Workbench-1.0.0-windows-x64.zip"
+$zip = "$env:SWB_BUILD\dist\Screening-Workbench-2.0.0-windows-x64.zip"
 Compress-Archive -Path "$env:SWB_BUILD\dist\ScreeningWorkbench" -DestinationPath $zip -Force
 Get-FileHash $zip -Algorithm SHA256
 ```
@@ -130,5 +162,18 @@ Confirm the ZIP contains every `notices/` file above and run:
 & $python -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); bad=z.testzip(); print("entries",len(z.namelist()),"bad",bad); assert bad is None; required={"ScreeningWorkbench/notices/"+x for x in sys.argv[2:]}; missing=required-set(z.namelist()); print("missing notices",missing); assert not missing' $zip $noticeFiles
 ```
 
-Update the release-archive properties in `docs/sbom.cdx.json` only after recording the verified ZIP hash and byte size. Keep the SBOM outside the archive it describes to avoid a self-referential hash.
+Update the release-archive properties in `docs/sbom.cdx.json` only after recording the ZIP hash, size, entry count, and integrity result. See `docs/release-gate-2.0.0.md`.
 
+The recorded ZIP was built from private build-repository commit `5ce1a30a40bb87f2a4b0488e250a31e3e80f4bb7`. The public repository has a separate Git history; this procedure builds the mirrored source on public `main` and does not claim to reproduce that ZIP byte-for-byte. Keep the SBOM outside the archive it describes to avoid a self-referential hash.
+
+For the 2.0.0 candidate, relative font `--add-data` failed with external `--specpath`; the successful build used the absolute `SWB_ROOT` font source above. LessMSI was unavailable, so `msiexec /a` extracted the matching Tcl/Tk MSI.
+
+## Exact ZIP smoke test
+
+This gate is separate from the onedir build smoke above. After the ZIP passes its integrity and payload checks, extract that exact ZIP to a new directory outside the repository and build output. Run the executable from the extracted package, not from the onedir build tree. Keep the extracted path and ZIP hash in the gate record.
+
+Repeat the test with a new disposable profile for each theme. Apply the disposable-profile isolation block above before launching, set SW_THEME to light or night, and confirm Python home, the project database path, and settings path resolve inside that profile before importing. Use synthetic records and a synthetic PDF only.
+
+For each profile, verify the extracted app opens and remains usable; complete a synthetic project import and the Screening view; open PRISMA; complete the Full-text workflow including Include, promote, attach the synthetic PDF, and open it. Stop if a database or settings path escapes the disposable profile, if any workflow fails, or if any user data appears.
+
+Capture package-only Screening screenshots from the synthetic project in both palettes. Save the accepted captures as release-2.0.0/evidence/package-screening-light.png and release-2.0.0/evidence/package-screening-night.png. Do not use empty-project startup screens, build-tree captures, or images containing other windows as gate evidence. If the extracted package cannot be driven through these workflows or both clean captures cannot be obtained, record the gate as blocked.

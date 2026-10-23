@@ -47,6 +47,29 @@ The CPython 3.14.7 Windows x64 installer at `https://www.python.org/ftp/python/3
 **Historical verdict (2026-10-07): conditionally cleared to begin implementation.** CPython 3.14.7, PyInstaller 6.21.0 onedir, and their resolved build-tool dependency tree were checked with a representative stdlib-only smoke build. This did not audit the current Screening Workbench application package. Its final SBOM/attribution notices, actual collected components, and exact distribution still require review before release. Merge, publish, and deployment also require separate authorization under the project guardrails.
 
 
+## Bundled typefaces (direction 02, owner ruling 2026-10-21)
+
+**Ruling:** Nate approved adding three SIL Open Font License 1.1 typeface families as bundled, unmodified data files (2026-10-21, in the Phase B session). They are not code dependencies and add no Python package.
+
+**Evidence (accessed 2026-10-21):** each file was downloaded from its upstream repository at a pinned commit, its git blob hash matched the GitHub contents API for that path and commit, and its SHA-256 is recorded below and pinned by `tests/test_app.py::test_r1_bundled_fonts_are_exactly_the_audited_files`. Each family's `OFL.txt` was taken from the same commit and is shipped verbatim in `docs/notices/`. None of the three license headers declares a Reserved Font Name; the files are shipped unmodified (no subsetting or renaming), so the Reserved Font Name clause does not apply. `Newsreader` is a registered trademark of Production Systems SAS (upstream `trademarks.md`); the app uses the name only to identify the bundled font.
+
+**Use:** loaded for the app process only with `AddFontResourceExW(..., FR_PRIVATE)` (`src/screening_workbench/typefaces.py`); nothing is installed on the user's machine. OFL 1.1 permits bundling and redistribution with software provided each copy carries the copyright notice and license, and the fonts are not sold by themselves.
+
+| File | Family / version | Source | SHA-256 |
+|---|---|---|---|
+| `Newsreader16pt-Regular.ttf` | Newsreader (16pt static cuts) 1.003 | `productiontype/NewsReader@cfcb4f7` `fonts/static/ttf/` | `0636887c9f72f77ce188f0b31029be58e65adae5a47e6d2887ad5020c2c75036` |
+| `Newsreader16pt-Italic.ttf` | Newsreader (16pt static cuts) 1.003 | `productiontype/NewsReader@cfcb4f7` `fonts/static/ttf/` | `292646cbb948153511e308fa80def59959746d70114bd0936ba0a7f67a33181d` |
+| `Newsreader16pt-Medium.ttf` | Newsreader (16pt static cuts) 1.003 | `productiontype/NewsReader@cfcb4f7` `fonts/static/ttf/` | `ee2f66ee4c6c313acf211c952211f8c6c0c0d9fa6a17cd0ec0ceba13418b1aed` |
+| `Newsreader16pt-Bold.ttf` | Newsreader (16pt static cuts) 1.003 | `productiontype/NewsReader@cfcb4f7` `fonts/static/ttf/` | `9e3d485293bb2f86d22f1a9bfb8d7213cff188270fa240b5084e27290746aea7` |
+| `AtkinsonHyperlegibleNext-Regular.ttf` | Atkinson Hyperlegible Next 2.001 | `googlefonts/atkinson-hyperlegible-next@7925f50` `fonts/ttf/` | `88ed5c31a71584c7772963b02d04bef1eb7e3d2e9c8b9cb204339b1f82cf432c` |
+| `AtkinsonHyperlegibleNext-Bold.ttf` | Atkinson Hyperlegible Next 2.001 | `googlefonts/atkinson-hyperlegible-next@7925f50` `fonts/ttf/` | `994414047df66bb4998d01c1cb1eeb4a2ddc4622d1aa56bbb8adbeca7645b041` |
+| `AtkinsonHyperlegibleNext-Italic.ttf` | Atkinson Hyperlegible Next 2.001 | `googlefonts/atkinson-hyperlegible-next@7925f50` `fonts/ttf/` | `b7f8f03ceb28ebadb2de2332b2e869a00e8dbfb5c8e00fdbb06385770c8227e7` |
+| `AtkinsonHyperlegibleMono-Regular.ttf` | Atkinson Hyperlegible Mono 2.001 | `googlefonts/atkinson-hyperlegible-next-mono@154d503` `fonts/ttf/` | `2c9a7b9fabebd5c746a808d8a1ef2f52e618850caad6ec4fd9f5c48f56e1c1af` |
+| `AtkinsonHyperlegibleMono-Bold.ttf` | Atkinson Hyperlegible Mono 2.001 | `googlefonts/atkinson-hyperlegible-next-mono@154d503` `fonts/ttf/` | `51ad68fafd7ec68051f64983c9c23182a7084268b5cdb0a154dbd53ade079da6` |
+| `AtkinsonHyperlegibleMono-Italic.ttf` | Atkinson Hyperlegible Mono 2.001 | `googlefonts/atkinson-hyperlegible-next-mono@154d503` `fonts/ttf/` | `356060ab70ae62e4460dd824ec1b734af24e5c3355a8302700151d35d1382dd4` |
+
+**Status: CLEARED** for bundling with the notices above. Re-audit if a file is replaced, subset, or renamed.
+
 ## Future-scope candidate evidence (not selected for v1)
 
 The following prior research is retained for possible future consideration only; it does not authorize or clear any component for the owner-selected v1 runtime or package.
