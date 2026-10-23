@@ -16,7 +16,7 @@ jobs:
           python-version: '3.14'
       - name: Install dependencies
         run: python -m pip install pytest
-      # Seven GUI tests assert pixel geometry / window-mapping behavior calibrated
+      # Eight GUI tests assert pixel geometry / window-mapping behavior calibrated
       # to the dev machine's display (widths, winfo_ismapped, viewport containment).
       # They pass in the full local suite and stay gated there; CI runs the rest.
       - name: Run test suite
@@ -29,3 +29,4 @@ jobs:
           --deselect tests/test_app.py::test_maybe_tab_uses_three_column_queue_detail_and_decision_layout
           --deselect tests/test_app.py::test_prisma_flow_diagram_enters_reference_viewport_after_counts
           --deselect tests/test_app.py::test_phase4_maybe_keyboard_and_blind_callout_fit_support_card
+          --deselect tests/test_app.py::test_r3_fulltext_attachment_list_keeps_a_full_row_with_bundled_faces
